@@ -621,7 +621,7 @@ _Сложность: —_ (определит лид)
 
 ## Статус
 
-`[x] ready`
+`[x] done`
 
 ## Метаданные
 - Создана PM: 2026-05-22
@@ -630,6 +630,8 @@ _Сложность: —_ (определит лид)
 - Lead-model: opus
 - Plan-review: revised (4 блокера круг 1 → 2 блокера круг 2 → resolved)
 - Lead-trigger: opus (priority P1)
-- Blocked-by: TASK-018 (pre-condition `enum UnitCategory` в CityState.swift)
-- Завершена: —
-- Коммит: —
+- Blocked-by: TASK-018 (pre-condition `enum UnitCategory` в CityState.swift) — выполнено
+- Исполнитель: sonnet (middle), retries=0
+- Code-review: approved (opus, P1)
+- Завершена: 2026-05-22
+- Коммит: (заполняется после git commit)

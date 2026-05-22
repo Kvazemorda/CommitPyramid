@@ -185,10 +185,13 @@ final class GameScene: SKScene {
 
     private func drawUnit(_ unit: UnitState, project: ProjectState) {
         let pos = isoPosition(grid: unit.position)
-        let node = UnitSprites.makeNode(unit: unit)
+        // Шаг 4 (TASK-019): используем категориальный tier-спрайт по stage квартала.
+        // makeStageNode устанавливает userData[unitIdKey/projectIdKey] внутри,
+        // поэтому дополнительная установка ниже — override (на случай если ключи различаются).
+        let node = UnitSprites.makeStageNode(unit: unit, stageOverride: project.stage)
         node.position = pos
         node.zPosition = -CGFloat(unit.position.x + unit.position.y)
-        node.userData = NSMutableDictionary()
+        node.userData = node.userData ?? NSMutableDictionary()
         node.userData?[Self.unitIdKey] = unit.id
         node.userData?[Self.projectIdKey] = unit.projectId
 
@@ -209,6 +212,62 @@ final class GameScene: SKScene {
         if let project = engine?.state.projects[unit.projectId], project.decayLevel > 0 {
             applyDecay(level: project.decayLevel, toUnit: unit, animated: false)
         }
+    }
+
+    // MARK: - Stage tier visual (TASK-019 F-08)
+
+    /// Вызывается из AppDelegate при live-тике stage-up квартала.
+    /// При catch-up (replayFromLog) callback не срабатывает — drawUnit уже рисует с целевым stage.
+    ///
+    /// Edge cases (все явно обработаны в swapStageSprite):
+    /// - Руина (ruinNode) — skip, визуал руины приоритетен.
+    /// - Legacy-нода без name="building" — skip (старый makeNode без именования).
+    /// - 500+ юнитов: все SKAction запускаются параллельно, общее окно ≤0.5 сек.
+    func handleProjectStageChanged(projectId: String, oldStage: Int, newStage: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.didAttach,
+                  let engine = self.engine,
+                  let project = engine.state.projects[projectId] else { return }
+            for uid in project.unitIds {
+                guard let node = self.unitNodes[uid] else { continue }
+                self.swapStageSprite(in: node, newStage: newStage)
+            }
+        }
+    }
+
+    /// Заменяет building-child в ноде юнита на категориальный tier-спрайт для newStage.
+    /// Cross-fade ≤0.5 сек, параллельно для всех нод квартала.
+    private func swapStageSprite(in node: SKNode, newStage: Int) {
+        // Guard: руина — skip, визуал руины приоритетен (decay 4).
+        if node.childNode(withName: "ruinNode") != nil { return }
+
+        // Guard: нет building-child — legacy-нода без name= (создана старым makeNode).
+        guard let oldBuilding = node.childNode(withName: "building") else { return }
+
+        // Получаем category из unit state по unitId из userData.
+        guard let unitId = node.userData?[UnitSprites.unitIdKey] as? UUID,
+              let unit = engine?.state.units[unitId] else { return }
+        let category = unit.kind.category
+
+        // Строим новый building с alpha=0.
+        let newBuilding = UnitSprites.makeCategoricalBuilding(category: category, stage: newStage)
+        newBuilding.name = "building"
+        newBuilding.alpha = 0
+        node.addChild(newBuilding)
+
+        // Параллельный кросс-фейд: fadeOut старого + removeFromParent, fadeIn нового.
+        // Общее визуальное окно ≤0.5 сек (AC F-08).
+        let fadeOut = SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.5),
+            SKAction.removeFromParent()
+        ])
+        fadeOut.timingMode = .easeOut
+        let fadeIn = SKAction.fadeIn(withDuration: 0.5)
+        fadeIn.timingMode = .easeOut
+        oldBuilding.run(fadeOut)
+        newBuilding.run(fadeIn)
+        // Примечание: decay-overlay (name == DecayVisuals.overlayKey) живёт на parent-контейнере
+        // и продолжает накладываться поверх нового building после swap — это ожидаемо.
     }
 
     // MARK: - Decay visual

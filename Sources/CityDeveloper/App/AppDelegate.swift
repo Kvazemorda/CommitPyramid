@@ -50,6 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onProjectRuinsCleared = { [weak self] oldProjectId, newProject in
             self?.scene?.handleRuinsCleared(oldProjectId: oldProjectId, newProject: newProject)
         }
+        // TASK-019 F-08: визуальная подмена tier при stage-up квартала.
+        // Callback срабатывает только при live-тике (silent=false в CityEngine).
+        engine.onProjectStageChanged = { [weak self] projectId, oldStage, newStage in
+            self?.scene?.handleProjectStageChanged(projectId: projectId, oldStage: oldStage, newStage: newStage)
+        }
 
         bridge = SceneBridge()
         bridge.scene = scene

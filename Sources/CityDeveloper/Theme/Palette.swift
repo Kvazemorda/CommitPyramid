@@ -15,6 +15,8 @@ enum Palette {
     static let smokeGrey  = SKColor(red: 0.36, green: 0.34, blue: 0.32, alpha: 1.0)
     static let inkDark    = SKColor(red: 0.16, green: 0.15, blue: 0.13, alpha: 1.0)
     static let parchment  = SKColor(red: 0.95, green: 0.89, blue: 0.77, alpha: 1.0)
+    /// Тёмное дерево — «древняя» палитра: брёвна, доски, балки.
+    static let warmBrown  = SKColor(red: 0.48, green: 0.30, blue: 0.16, alpha: 1.0)
 
     // Semantic tokens
     static let success = NSColor(red: 0.290, green: 0.561, blue: 0.243, alpha: 1.0)

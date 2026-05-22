@@ -16,6 +16,10 @@ final class CityEngine: ObservableObject {
     var onUnitBuilt: ((UnitState, ProjectState) -> Void)?
     var onProjectCreated: ((ProjectState) -> Void)?
     var onDecayChanged: ((String) -> Void)?
+    /// Вызывается при повышении stage квартала (TASK-019 F-08 визуальная часть).
+    /// Параметры: projectId, oldStage, newStage.
+    /// Срабатывает только при live-тике (!silent); при replayFromLog (silent=true) — нет.
+    var onProjectStageChanged: ((String, Int, Int) -> Void)?
     /// Вызывается при атомарной замене руины новым проектом (F-06 ruin-priority).
     /// oldProjectId — projectId удалённого District-руин; newProject — свежесозданный ProjectState.
     /// Анимация расчистки — чисто визуальная (не event-sourced), запускается в GameScene.
@@ -251,6 +255,7 @@ final class CityEngine: ObservableObject {
         state.units[unit.id] = unit
         project.unitIds.append(unit.id)
 
+        let oldStage = project.stage
         let newStage = StageRules.computeStage(
             taskCount: project.taskCount,
             ageDays: max(1, Calendar.current.dateComponents([.day], from: project.createdAt, to: event.ts).day ?? 1)
@@ -260,6 +265,14 @@ final class CityEngine: ObservableObject {
         }
 
         state.projects[projectKey] = project
+
+        // TASK-019: обновляем unit.tier для всех юнитов проекта при stage-up (атомарно).
+        // Включая только что добавленный юнит (project.unitIds уже содержит unit.id).
+        if newStage > oldStage {
+            for uid in project.unitIds {
+                state.units[uid]?.tier = newStage
+            }
+        }
 
         if !silent {
             if isNewProject {
@@ -275,6 +288,10 @@ final class CityEngine: ObservableObject {
                 }
             }
             onUnitBuilt?(unit, project)
+            // TASK-019: callback stage-up (только при live-тике, после onUnitBuilt).
+            if newStage > oldStage {
+                onProjectStageChanged?(projectKey, oldStage, newStage)
+            }
         }
     }
 
