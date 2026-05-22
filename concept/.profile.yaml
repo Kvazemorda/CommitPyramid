@@ -1,0 +1,18 @@
+project_type: desktop-native
+primary_language: swift
+framework: swiftui+spritekit
+doc_language: ru
+doc_root: concept
+naming:
+  files: PascalCase
+  folders: PascalCase
+design_sources:
+  - Assets.xcassets
+  - "**/Color+Extensions.swift"
+  - "**/Theme.swift"
+  - "**/Palette.swift"
+id_prefixes:
+  feature: F
+  diff: D
+  bug: BUG
+  task: TASK

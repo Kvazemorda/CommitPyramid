@@ -1,0 +1,18 @@
+# Swift / SPM
+.build/
+.swiftpm/
+Packages/
+*.xcodeproj/
+DerivedData/
+xcuserdata/
+
+# macOS
+.DS_Store
+
+# Logs / state
+*.log
+state.json
+
+# Profiles
+Scripts/profiles/
+*.trace

@@ -1,0 +1,22 @@
+core_collapse_threshold: 3
+last_sync_date: "2026-05-22"
+last_sync_commit: ""
+last_report_date: "2026-05-22"
+last_report_ref: ""
+feature_stability:
+  F-01: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
+  F-02: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }
+  F-03: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-04: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-05: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
+  F-06: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }
+  F-07: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }
+  F-08: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }
+  F-09: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
+  F-10: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
+  F-11: { status: "⚠️", consecutive_ok: 1, collapse_skipped: false }
+  F-12: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
+  F-13: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
+  F-14: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
+  F-15: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
+  F-16: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
