@@ -247,9 +247,262 @@ _Из concept.md F-19 (дословно):_
 
 ## 🛠 Технический разбор от тимлида
 
-_Статус: [ ] нужен разбор_
+_Автор: lead (agent)_
+_Дата: 2026-05-22_
+_Статус: ready_
 
-> Заполняется командой `/lead 023`.
+### Архитектурный каркас
+
+`GitWatcher` — отдельный модуль, реализует тот же `EventSource`-протокол, что и
+`NotesWatcher` (TASK-022). Вся работа с git — **только через `Foundation.Process`
+со списком аргументов** (никаких shell-строк, никакого user-input в командной
+строке). Минимально один helper `GitCLI`, выше — `GitWatcher` с per-repo
+state'ом.
+
+### Новые файлы
+
+| Файл                                          | Назначение                                                                |
+|-----------------------------------------------|---------------------------------------------------------------------------|
+| `Data/GitWatcher/GitCLI.swift`                | Process-обёртка: `run(args:cwd:timeout:) -> (stdout, stderr, exit)`        |
+| `Data/GitWatcher/GitRepoSpec.swift`           | `struct GitRepoSpec: Codable, Identifiable`                               |
+| `Data/GitWatcher/GitWatcher.swift`            | Lifecycle, scan, dedup, ts-bumping, integration with engine               |
+| `Data/GitWatcher/ConventionalCommit.swift`    | Парсер префиксов `feat/fix/refactor/docs/chore/...` → category hint        |
+| `UI/Settings/GitWatcherSection.swift`         | Settings UI секция «Git watcher»                                          |
+
+### Изменения в существующих файлах
+
+- **`Data/AppSettings.swift`** — добавить `@Published var gitRepos: [GitRepoSpec] = []`
+  + опциональное поле `gitRepos: [GitRepoSpec]?` в `Persisted` (backward-compat,
+  без bump `version`).
+- **`Game/CityEngine.swift`** — использовать тот же `ingestTaskCompletionIfUnique`,
+  что вводит TASK-022. Если задачи стартуют параллельно — реализует тот, кто
+  первый.
+- **`Data/GameEvent.swift`** — **опциональное** поле `category: UnitCategory?`
+  (или `categoryHint: String?`) — для проброса hint'а в UnitPlanner.
+  **Не обязательно** в этой версии: если решаем без него, hint передаётся
+  через title-префикс «[feat] …» и игнорируется UnitPlanner'ом (он сам решит).
+  Дефолтная реализация: без поля; hint только для эстетики в title.
+- **`UI/SettingsView.swift`** — встроить `GitWatcherSection` после `NotesWatcherSection`.
+- **`App/AppDelegate.swift`** — инстанциирование `GitWatcher` после engine,
+  регистрация в `CatchUpScheduler`.
+
+### Структуры данных
+
+```swift
+struct GitRepoSpec: Codable, Identifiable, Hashable {
+    let id: String                   // SHA-256(path + projectId + remoteUrl?)
+    var path: URL
+    var projectId: String            // editable юзером
+    var branch: String               // editable, default main/master
+    var gitFetch: Bool = false
+    var weightByDiff: Bool = false
+    var categoryByType: Bool = false
+}
+
+struct GitCommit {
+    let sha: String
+    let ts: Date
+    let subject: String              // первая строка commit message
+}
+```
+
+### GitCLI (синхронная обёртка)
+
+```swift
+enum GitCLIError: Error { case notFound, timeout, exitCode(Int32, String) }
+
+struct GitCLI {
+    static let gitPath: String = "/usr/bin/git"   // macOS default; PATH override —
+                                                  // отдельный fallback `which git`
+                                                  // на первом запуске
+
+    static func run(args: [String], cwd: URL, timeout: TimeInterval = 10)
+        throws -> (stdout: Data, stderr: String, exit: Int32)
+}
+```
+
+- Запуск через `Process` + `Pipe` для stdout/stderr.
+- Timeout — через `DispatchQueue.global().asyncAfter` + `process.terminate()`.
+- `ENOENT` (нет `/usr/bin/git`) → `GitCLIError.notFound` → alert юзеру при
+  первой ошибке, watcher выключается до перезапуска.
+- Все аргументы — отдельные элементы массива, **без интерполяции**.
+
+### GitWatcher.scan(repo: since:)
+
+Псевдокод:
+
+```swift
+1. Validate path: .exists && isDirectory && (path/.git).exists
+   - не выполняется → ErrorsLog + return since (no advance).
+2. (Опц.) git fetch:
+   if repo.gitFetch:
+       GitCLI.run(["-C", path, "fetch", "origin", repo.branch], timeout: 10)
+       fail → log, continue with local.
+3. git log:
+   args = ["-C", path, "log", repo.branch,
+           "--since", ISO8601(since),
+           "--pretty=tformat:%H%n%ct%n%s%x00",
+           "--no-merges",
+           "-n", "1000"]   // hard cap
+   stdout = GitCLI.run(args).stdout
+4. Parse: split by 0x00, for each record split by \n → (sha, ct, subject).
+5. Sort by ts asc (`--since` уже даёт reverse chrono, нужно asc для
+   стабильного порядка ingest).
+6. For each commit:
+   - title = String(subject.prefix(255))
+   - category = if repo.categoryByType {
+        ConventionalCommit.category(from: subject) ?? .residential
+     } else { .residential }
+   - if categoryByType && ConventionalCommit.isIgnored(subject) { continue }
+   - weight = repo.weightByDiff ? computeWeight(repo, prevSha, sha) : 1
+     // prevSha = previous in this scan, or nil (skip diff if no prev)
+   - For i in 0..<weight:
+       source = "git:\(repo.id):\(sha)" + (weight > 1 ? "#\(i)" : "")
+       ts_i = Date(timeIntervalSince1970: ct) + Double(i) * 0.001
+       engine.ingestTaskCompletionIfUnique(
+           project: repo.projectId,
+           title: title + (weight > 1 ? " (\(i+1)/\(weight))" : ""),
+           taskId: nil,
+           source: source,
+           ts: ts_i)
+7. Return ts последнего обработанного коммита (для `lastCheckTs` через F-20).
+```
+
+### computeWeight
+
+```swift
+GitCLI.run(["-C", path, "diff", "--shortstat", "\(prevSha)..\(sha)"])
+parse stdout: "N insertions(+)" + "M deletions(-)"
+lines = N + M
+return switch lines {
+    case 0...10: 1
+    case 11...100: 2
+    case 101...500: 3
+    default: 5
+}
+```
+
+При отсутствии `prevSha` (первый коммит в scan'е, либо первый коммит в репо) —
+`weight = 1`.
+
+### projectId auto-resolve
+
+```swift
+GitCLI.run(["-C", path, "remote", "get-url", "origin"])
+remote = stdout.trim
+// SSH:   git@host:owner/repo.git           → "repo"
+// HTTPS: https://host/owner/repo(.git)?    → "repo"
+// fallback на path.lastPathComponent
+parse via two regex:
+  1. ^.*[:/]([A-Za-z0-9_.-]+?)(\.git)?$
+  2. else → path.lastPathComponent
+```
+
+`projectId` editable юзером в Settings (TextField) — auto-value только initial.
+
+### branch auto-pick
+
+```swift
+GitCLI.run(["-C", path, "branch", "--list", "--format=%(refname:short)"])
+branches = stdout split by \n
+if "main" in branches → "main"
+else if "master" in branches → "master"
+else branches.first ?? ""
+```
+
+### ConventionalCommit
+
+```swift
+enum ConventionalCommit {
+    static func category(from subject: String) -> UnitCategory? {
+        let prefix = subject.split(separator: ":").first.map { $0.lowercased() }
+        switch prefix {
+            case "feat":     return .residential
+            case "fix":      return .infrastructure
+            case "refactor": return .production
+            case "docs":     return .social
+            default:         return nil
+        }
+    }
+    static func isIgnored(_ subject: String) -> Bool {
+        ["chore", "style", "wip"].contains(
+            subject.split(separator: ":").first.map { $0.lowercased() } ?? ""
+        )
+    }
+}
+```
+
+### Live режим
+
+Git не даёт inotify-аналога на `.git/refs/heads/<branch>`. Best-effort:
+- `DispatchSource` на файл `<path>/.git/refs/heads/<branch>` с `.write/.extend`
+  event'ом → immediate re-scan.
+- Если файл не существует (packed refs) — fallback только на 5-минутный poll
+  через F-20.
+- Документировано как edge case.
+
+### Catch-up интеграция (TASK-020)
+
+Аналогично notes-watcher: каждый `GitRepoSpec` = отдельный `EventSource`.
+Если TASK-020 ещё не закрыта — временный `DispatchSourceTimer` внутри
+GitWatcher на 5 мин, удаляется при миграции на F-20.
+
+### Settings UI
+
+`GitWatcherSection` — `Form/Section`. Список репо — `Table` (или `List`),
+строки с inline-edit:
+- `projectId` — `TextField`, ширина 100pt.
+- `branch` — `Picker`, ширина 80pt, источник — `branches(of: repo.path)`
+  (lazy, кэш на 10 сек, чтобы не дёргать git каждое открытие меню).
+- 3 `Toggle`.
+- Кнопка trash.
+
+`NSOpenPanel` — только директории (`canChooseFiles=false,
+canChooseDirectories=true`). После выбора — sync-проверка `<path>/.git`
+существования; если нет — `Alert(title: "Не git-репозиторий")`.
+
+### Тестовый план (юнит-тесты)
+
+1. `ConventionalCommit.category` — все 4 префикса + 3 игнор + 2 unknown
+   (`build:`, `FEAT:` lowercase normalize).
+2. `subject` с `:` внутри (`docs: fix: typo`) → prefix=`docs`, title=`fix: typo`.
+3. `GitCLI.run` mock на in-memory temp-репо (создать `git init`, 3 коммита,
+   запустить scan): 3 события в `engine.events`, повторный scan → 0.
+4. `weightByDiff`: коммит на 150 строк → 3 события с suffix'ами `#0/#1/#2`,
+   ts смещены на 0/1/2 ms.
+5. `gitFetch` timeout (mock через slow process): warning в ErrorsLog,
+   scan продолжается.
+6. Remote-URL parse: 6 кейсов (SSH, HTTPS, file://, GitHub Enterprise,
+   broken, missing).
+7. Branch auto-pick: 3 кейса (есть main, нет main но есть master, ни того ни
+   другого).
+
+### Точки риска
+
+- **`/usr/bin/git` не существует** на чистом mac (без Xcode CLI tools). Fallback:
+  при `ENOENT` пробовать `which git` через `Process`. Если и это пусто —
+  выключение watcher'а до перезапуска с alert.
+- **`git log --since` точность**: `--since` парсит ISO8601, но игнорирует
+  миллисекунды. Достаточно секундной точности — `lastCheckTs` обновляем на
+  `ts последнего коммита + 1 секунда` чтобы не получать его повторно на
+  следующем scan'е. Dedup по `source` — страховка.
+- **Большие репо**: ограничение `-n 1000` хард-капит. Если в очереди >1000 —
+  warning + следующий poll. Edge case покрыт.
+- **`Process` zombie** при таймауте: после `terminate()` сделать `waitUntilExit()`
+  с дополнительным timeout 1s, потом `interrupt()`. Документировано в `GitCLI`.
+- **ts-collision при weight-split**: суффикс `#i` гарантирует уникальность
+  `source`, +1ms на ts даёт детерминированный порядок при replay'е.
+- **Race на `lastCheckTs` при concurrent scan'ах**: единая `serial queue`
+  внутри `GitWatcher` гарантирует, что один и тот же repo не сканируется
+  параллельно (live-event + 5-мин poll могут совпасть). `liveScanInFlight: Set<repoId>` — guard.
+
+### Что лид НЕ решает в этой задаче
+
+- Поддержку feature-веток / multi-branch на один репо (Backlog).
+- Учёт `git revert` как удаления юнита (явно out-of-scope).
+- Sandbox / security-scoped bookmarks (явно out-of-scope).
+- Параллельный fetch нескольких репо на старте — sequential на serial queue
+  достаточно для MVP.
 
 ---
 
@@ -283,11 +536,14 @@ _Сложность: —_ (определит лид)
 
 ## Статус
 
-`[x] waiting-for-lead`
+`[x] ready-to-run` (blocked-by TASK-020 для чистой интеграции `EventSource`;
+до закрытия TASK-020 — допустим временный 5-мин `DispatchSourceTimer` внутри
+watcher'а)
 
 ## Метаданные
 - Создана PM: 2026-05-22
 - Spec-review: —
-- Готова к работе: —
+- Lead-разбор: 2026-05-22
+- Готова к работе: 2026-05-22 (с оговоркой по TASK-020)
 - Завершена: —
 - Коммит: —

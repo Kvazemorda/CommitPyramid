@@ -1,10 +1,42 @@
 import SpriteKit
+import AppKit
 
 /// Фабрика визуала юнита: тайл-земля + тень + куб + крыша + декорации.
 enum UnitSprites {
 
     static let tileWidth: CGFloat = 64
     static let tileHeight: CGFloat = 32
+
+    // MARK: - Растровые ассеты зданий
+
+    /// Кеш текстур, чтобы не перечитывать PNG на каждый юнит.
+    private static var spriteTextureCache: [String: SKTexture] = [:]
+
+    /// Пытается загрузить PNG из Resources/Buildings/<name>.png и собрать SKSpriteNode
+    /// под изометрический тайл. anchorY смещает основание спрайта в нужное место тайла
+    /// (0.30 ≈ низ основания изометрического домика).
+    static func loadBuildingSprite(named name: String, targetWidth: CGFloat, anchorY: CGFloat) -> SKSpriteNode? {
+        let texture: SKTexture
+        if let cached = spriteTextureCache[name] {
+            texture = cached
+        } else {
+            guard
+                let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: "Buildings")
+                       ?? Bundle.module.url(forResource: name, withExtension: "png"),
+                let image = NSImage(contentsOf: url)
+            else { return nil }
+            texture = SKTexture(image: image)
+            texture.filteringMode = .linear
+            spriteTextureCache[name] = texture
+        }
+        let size = texture.size()
+        guard size.width > 0 else { return nil }
+        let scale = targetWidth / size.width
+        let sprite = SKSpriteNode(texture: texture)
+        sprite.size = CGSize(width: size.width * scale, height: size.height * scale)
+        sprite.anchorPoint = CGPoint(x: 0.5, y: anchorY)
+        return sprite
+    }
 
     // MARK: - userData keys
 
@@ -84,7 +116,11 @@ enum UnitSprites {
         let node = SKNode()
         switch stage {
         case 1:
-            // Лачуга: низкий земляной куб
+            // Лачуга: пробуем растровый ассет, иначе процедурный куб
+            if let sprite = loadBuildingSprite(named: "shack", targetWidth: 64, anchorY: 0.30) {
+                node.addChild(sprite)
+                break
+            }
             let fp = CGSize(width: 30, height: 16)
             let h: CGFloat = 14
             let body = IsoBuilder.cube(

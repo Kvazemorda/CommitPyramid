@@ -262,9 +262,197 @@ _Из concept.md F-18 (дословно):_
 
 ## 🛠 Технический разбор от тимлида
 
-_Статус: [ ] нужен разбор_
+_Автор: lead (agent)_
+_Дата: 2026-05-22_
+_Статус: ready_
 
-> Заполняется командой `/lead 022`.
+### Архитектурный каркас
+
+Источник F-04 (`TasksJsonlWatcher`) намеренно не мигрируем. Делаем **отдельный**
+модуль `NotesWatcher` рядом, со своими структурами, парсером, sidecar'ом и
+DispatchSource'ами. EventSource-протокол (вводится в TASK-020) — общий
+интерфейс между notes-watcher'ом и `CatchUpScheduler`.
+
+### Новые файлы
+
+| Файл                                          | Назначение                                                           |
+|-----------------------------------------------|----------------------------------------------------------------------|
+| `Data/NotesWatcher/NotesSourceSpec.swift`     | `struct NotesSourceSpec: Codable, Identifiable` (path, kind, mode, id) |
+| `Data/NotesWatcher/NotesPatternParser.swift`  | 4 шаблона (regex/детерм.), `parse(_ line: String) -> ParsedTask?`     |
+| `Data/NotesWatcher/NotesStateStore.swift`     | sidecar `<sourceHash>.json` в `notes-state/`, R/W lineHash → ts        |
+| `Data/NotesWatcher/NotesFileReader.swift`     | UTF-8 → Latin-1 fallback, encoding-флаг для `delete-processed` gate   |
+| `Data/NotesWatcher/NotesWatcher.swift`        | Главный класс: lifecycle, DispatchSource per-source, `scan(since:)`   |
+| `UI/Settings/NotesWatcherSection.swift`       | Settings UI секция «Notes watcher»                                    |
+| `UI/Settings/NotesPatternsPopover.swift`      | Popover из «?» с описанием 4 шаблонов                                 |
+
+### Изменения в существующих файлах
+
+- **`Data/AppSettings.swift`** — добавить `@Published var notesSources: [NotesSourceSpec] = []`;
+  в `Persisted` — поле `notesSources: [NotesSourceSpec]?` (опционально для
+  backward-compat со старым JSON). `Persisted.version` **не повышаем** —
+  отсутствие поля = `[]`.
+- **`Game/CityEngine.swift`** — добавить публичный метод
+  `func ingestTaskCompletionIfUnique(project:, title:, taskId:, source:, ts:)`:
+  перед `eventLog.append` проверяет, нет ли в `engine.events` события с тем
+  же непустым `source`. Если есть — silent no-op (idempotency через
+  events.jsonl-уровень). Используется и `NotesWatcher`, и (в будущем)
+  `GitWatcher`. `TasksJsonlWatcher` продолжает звать `ingestTaskCompletion`
+  без проверки (его `source` либо nil, либо произвольная строка от агента —
+  не наш канал dedup'а).
+- **`UI/SettingsView.swift`** — встроить `NotesWatcherSection` после
+  существующих полей.
+- **`App/AppDelegate.swift`** — инстанциирование `NotesWatcher` после
+  `engine`, регистрация в `CatchUpScheduler` (если он уже доступен — иначе
+  ждём TASK-020).
+
+### Протокол EventSource (контракт с TASK-020)
+
+```swift
+protocol EventSource: AnyObject {
+    var sourceId: String { get }
+    func scan(since: Date) -> Date  // returns new lastCheckTs
+    func startLive()                // attach DispatchSource (if applicable)
+    func stopLive()
+}
+```
+
+`NotesWatcher` держит одну запись `EventSource` на каждый `NotesSourceSpec`
+(file/folder/folder-recursive — единое поведение, переключается через
+enumerator). `sourceId` = стабильный хэш `path + kind`.
+
+### Структуры данных
+
+```swift
+struct NotesSourceSpec: Codable, Identifiable, Hashable {
+    let id: String                   // SHA-256(path + kind), стабильный
+    var path: URL                    // bookmark-free, прямой путь
+    var kind: SourceKind             // .file / .folder / .folderRecursive
+    var mode: ProcessingMode         // .deleteProcessed / .sidecarDedup
+    enum SourceKind: String, Codable { case file, folder, folderRecursive }
+    enum ProcessingMode: String, Codable { case deleteProcessed, sidecarDedup }
+}
+
+struct ParsedTask {
+    let projectId: String            // [A-Za-z0-9_-]+, не зарезервированное
+    let title: String                // trimmed, 1..500 chars
+    let lineHash: String             // SHA-256 от исходной строки (raw)
+    let templateNumber: Int          // 1..4 (для отладки/тестов)
+}
+```
+
+### Парсер шаблонов (`NotesPatternParser`)
+
+- Регекспы как `static let` (компиляция один раз).
+- Шаблон 1: `^- \[x\] \[project: ([A-Za-z0-9_-]+)\] (.+)$`
+- Шаблон 2: `^- \[x\] (.+) #([A-Za-z0-9_-]+)\s*$` (title до hashtag'а, обрезать
+  trailing whitespace)
+- Шаблон 3: `^~~(.+)~~ #([A-Za-z0-9_-]+)\s*$`
+- Шаблон 4: `^- \[x\] ([A-Za-z0-9_-]+): (.+)$` с пост-фильтром zoom'a
+  projectId по `RESERVED = { "project", "system", "null", "none" }` (lowercase
+  compare).
+- Приоритет: пробуем 1 → 2 → 3 → 4, возвращаем первый match.
+- `lineHash` берётся **до** trimming'а, по сырой строке файла (без LF).
+
+### Sidecar (`NotesStateStore`)
+
+- Каталог: `AppPaths.appSupport.appendingPathComponent("notes-state")`,
+  создаётся при старте.
+- Файл: `<sourceId>.json`, формат `{ "<lineHash>": "<ISO8601>" }`.
+- Atomic write через `Data.write(to:, options:.atomic)`.
+- R/W из IO-очереди watcher'а (последовательная), main thread не блокируется.
+
+### NotesWatcher (главный класс)
+
+```swift
+final class NotesWatcher {
+    weak var engine: CityEngine?
+    private var specs: [NotesSourceSpec.ID: NotesSourceSpec] = [:]
+    private var liveSources: [NotesSourceSpec.ID: DispatchSourceFileSystemObject] = [:]
+    private var state: [NotesSourceSpec.ID: NotesStateStore] = [:]
+    private let queue = DispatchQueue(label: "city.notes.io")
+
+    func register(_ spec: NotesSourceSpec)            // от Settings UI
+    func unregister(_ id: NotesSourceSpec.ID)
+    func scan(_ id: NotesSourceSpec.ID, since: Date)  // ручной/scheduler-driven
+}
+```
+
+- `register` — открывает sidecar, attach DispatchSource (на file или папку),
+  immediate scan с `since = sidecar.lastSeen ?? .distantPast`.
+- `unregister` — closes fd, сохраняет sidecar.
+- На каждый файл при scan'е: `NotesFileReader.read(url) -> (text, encoding)`,
+  построчно через парсер, для каждой match'нувшей строки:
+  1. `lineHash` → если `state.contains(lineHash)` (sidecar-режим) → skip.
+  2. `event = (project, title, ts = file mtime, source = "notes:<sourceId>:<lineHash>")`.
+  3. `engine.ingestTaskCompletionIfUnique(...)` на main queue.
+  4. После успешного ingest (синхронно через main.sync? — нет, считаем
+     pessimistic: если ingest упал, на следующем тике перепарсится):
+     - `sidecar-dedup`: `state[lineHash] = Date()` + save.
+     - `delete-processed` (только UTF-8): построить новый текст без этой
+       строки, atomic write; если файл стал empty/whitespace → `removeItem`.
+
+### DispatchSource live-режим
+
+Для `.file` — стандартный `O_EVTONLY` (как в TasksJsonlWatcher).
+Для `.folder` / `.folderRecursive` — DispatchSource на сам каталог; на write/extend
+запускаем полный re-scan папки (cheap, файлов десятки–сотни). Это проще, чем
+поддерживать индекс открытых fd'ев на каждый .md.
+
+### Catch-up интеграция
+
+Каждый `NotesSourceSpec` регистрируется как `EventSource` в
+`CatchUpScheduler`. Если TASK-020 ещё не закрыта на момент работы — оставляем
+TODO-комментарий + `DispatchSourceTimer` 5 мин внутри `NotesWatcher` как
+временное решение. **Чистая реализация — только после закрытия TASK-020.**
+
+### Settings UI
+
+`NotesWatcherSection` — `Section` внутри существующей `Form` в `SettingsView`.
+Биндинг — массив `@Published var notesSources` в `AppSettings`. Изменение
+массива → `appSettings.save()` + `notesWatcher.register/unregister`.
+
+`NSOpenPanel` запускается из метода View (через `NSApp.runModal`), результат —
+один `URL`. По типу URL (`isDirectory` атрибут + checkbox «рекурсивно»)
+строится `NotesSourceSpec`.
+
+Alert «delete-processed подтверждение» — стандартный SwiftUI `.alert`,
+триггер — `@State var pendingMode: ProcessingMode?`.
+
+### Тестовый план (юнит-тесты)
+
+1. `NotesPatternParser` — 4 позитива (по одному на шаблон), 4 негатива
+   (зарезервированный projectId; незакрытый strikethrough; пустой title;
+   неподходящий формат).
+2. Приоритет: `- [x] [project: foo] task #bar` → шаблон 1, `project=foo`.
+3. `NotesStateStore` — write/read round-trip, atomic при concurrent reader.
+4. `NotesFileReader` — UTF-8 ok, Latin-1 fallback ok, mode auto-downgrade
+   в Latin-1 + warning.
+5. `NotesWatcher.scan` на тестовой папке (in-memory через `FileManager` в
+   `tmp`): 4 шаблона → 4 события в `engine.events`, повторный scan → 0 новых
+   событий.
+
+### Точки риска
+
+- **NSOpenPanel + SwiftUI**: в macOS modal не блокирует SwiftUI render-цикл
+  правильно при некоторых combinations. Сделать через AppKit-обёртку с
+  `runModal()`, return `URL?` синхронно.
+- **DispatchSource на папку при rename**: macOS не всегда даёт write-event при
+  моде Obsidian (создаёт temp + rename). Покрыть через периодический scan
+  (5-мин F-20) — это и есть страховка.
+- **delete-processed race с редактором**: документировано в edge cases,
+  atomic write минимизирует риск, но не исключает потерю «второй редакции
+  юзера за тот же scan». Решение «накат поверх»: на следующем тике
+  пере-чтение из файла даст новое состояние; не блокер для приёмки.
+- **Sidecar drift** (state corrupt): `NotesStateStore.load()` при decode-fail →
+  лог + пустой словарь + регенерация на следующем save. Events.jsonl dedup
+  через `ingestTaskCompletionIfUnique` спасает от повторного ingest.
+
+### Что лид НЕ решает в этой задаче
+
+- Расширение шаблонов через UI (Backlog).
+- Расширение `version` в `Persisted` AppSettings (опциональное поле решает
+  forward-compat).
+- Миграция F-04 на `EventSource` (отдельная refactor-задача в Backlog).
 
 ---
 
@@ -295,11 +483,14 @@ _Сложность: —_ (определит лид)
 
 ## Статус
 
-`[x] waiting-for-lead`
+`[x] ready-to-run` (blocked-by TASK-020 для чистой интеграции `EventSource`;
+до закрытия TASK-020 — допустим временный 5-мин `DispatchSourceTimer` внутри
+watcher'а)
 
 ## Метаданные
 - Создана PM: 2026-05-22
 - Spec-review: —
-- Готова к работе: —
+- Lead-разбор: 2026-05-22
+- Готова к работе: 2026-05-22 (с оговоркой по TASK-020)
 - Завершена: —
 - Коммит: —
