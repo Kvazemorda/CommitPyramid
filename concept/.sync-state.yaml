@@ -20,3 +20,7 @@ feature_stability:
   F-14: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
   F-15: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
   F-16: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
+  F-17: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
+  F-18: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
+  F-19: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
+  F-20: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
