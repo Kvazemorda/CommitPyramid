@@ -516,7 +516,7 @@ _Сложность: —_ (определит лид)
 
 ## Статус
 
-`[x] ready`
+`[x] done`
 
 ## Метаданные
 - Создана PM: 2026-05-22
@@ -525,5 +525,7 @@ _Сложность: —_ (определит лид)
 - Lead-model: opus
 - Plan-review: revised (3 блокера круг 1 → approved круг 2)
 - Lead-trigger: opus (priority P0)
-- Завершена: —
-- Коммит: —
+- Исполнитель: sonnet (middle), retries=0
+- Code-review: approved (opus, P0)
+- Завершена: 2026-05-22
+- Коммит: dc037ae

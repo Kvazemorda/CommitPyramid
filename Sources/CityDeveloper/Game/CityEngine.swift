@@ -16,6 +16,10 @@ final class CityEngine: ObservableObject {
     var onUnitBuilt: ((UnitState, ProjectState) -> Void)?
     var onProjectCreated: ((ProjectState) -> Void)?
     var onDecayChanged: ((String) -> Void)?
+    /// Вызывается при атомарной замене руины новым проектом (F-06 ruin-priority).
+    /// oldProjectId — projectId удалённого District-руин; newProject — свежесозданный ProjectState.
+    /// Анимация расчистки — чисто визуальная (не event-sourced), запускается в GameScene.
+    var onProjectRuinsCleared: ((String, ProjectState) -> Void)?
 
     private var periodicSnapshotTimer: DispatchSourceTimer?
 
@@ -148,6 +152,8 @@ final class CityEngine: ObservableObject {
         let projectKey = event.project
         var project: ProjectState
         var isNewProject = false
+        // F-06: хранит oldProjectId руины при атомарной замене; nil = размещение на свежем лугу.
+        var ruinsClearedFrom: String? = nil
 
         if let existing = state.projects[projectKey] {
             project = existing
@@ -164,8 +170,37 @@ final class CityEngine: ObservableObject {
             project.taskCount += 1
         } else {
             isNewProject = true
-            let origin = districtPlanner.allocateNextOrigin(currentIndex: state.nextDistrictIndex)
-            state.nextDistrictIndex += 1
+            // F-06 ruin-priority: если на карте есть зоны руин — занять старшую атомарно.
+            // Edge case «возрождение projectId»: pickRuinForNewProject(excluding: projectKey)
+            // гарантирует, что проект не занимает сам себя; его руина не является кандидатом.
+            // Edge case «два новых проекта в одном тике»: обрабатываются последовательно на
+            // main-queue; второй видит уже обновлённый state (первая руина удалена).
+            let origin: GridPoint
+
+            if let ruin = pickRuinForNewProject(excluding: projectKey) {
+                // Шаги 1–4 (атомарный state-переход):
+                // 1. Запомнить origin и oldProjectId руины.
+                let reusedOrigin = ruin.districtOrigin
+                let oldProjectId = ruin.id
+
+                // 2–3. Удалить все UnitState руины, затем сам ProjectState.
+                //      После этого state уже не содержит старого District —
+                //      snapshot, сделанный после, увидит финальное состояние.
+                for uid in ruin.unitIds {
+                    state.units.removeValue(forKey: uid)
+                }
+                state.projects.removeValue(forKey: oldProjectId)
+
+                // 4. Использовать origin руины; НЕ инкрементируем nextDistrictIndex
+                //    (счётчик спирали не должен двигаться при переиспользовании участка).
+                origin = reusedOrigin
+                ruinsClearedFrom = oldProjectId
+            } else {
+                // Fallback: стандартная спираль от центра (нет руин на карте).
+                origin = districtPlanner.allocateNextOrigin(currentIndex: state.nextDistrictIndex)
+                state.nextDistrictIndex += 1
+            }
+
             project = ProjectState(
                 id: projectKey,
                 name: projectKey,
@@ -212,9 +247,40 @@ final class CityEngine: ObservableObject {
 
         if !silent {
             if isNewProject {
-                onProjectCreated?(project)
+                if let oldId = ruinsClearedFrom {
+                    // Ruins-ветка: взаимоисключающий callback.
+                    // onProjectCreated НЕ вызывается — GameScene нарисует district-маркер
+                    // внутри анимации расчистки (handleRuinsCleared, после wait(2.0)).
+                    // Двойной вызов drawDistrictMarker исключён guard'ом в GameScene:248.
+                    onProjectRuinsCleared?(oldId, project)
+                } else {
+                    // Свежий луг: обычный callback.
+                    onProjectCreated?(project)
+                }
             }
             onUnitBuilt?(unit, project)
         }
+    }
+
+    /// Детерминированный выбор руины для нового проекта (F-06).
+    /// Возвращает кандидата по правилу: ruinedAt (lastActivityAt) asc → unitIds.count desc → id asc.
+    /// Использует lastActivityAt как proxy для ruinedAt (не вводим новое поле, нет миграции snapshot).
+    /// excluding: исключает projectId нового проекта — защита от самозанятия при возрождении.
+    private func pickRuinForNewProject(excluding newProjectId: String) -> ProjectState? {
+        state.projects.values
+            .filter { $0.decayLevel == 4 && $0.id != newProjectId }
+            .sorted { lhs, rhs in
+                // Первично: старшая руина (наименьший lastActivityAt = дольше без активности)
+                if lhs.lastActivityAt != rhs.lastActivityAt {
+                    return lhs.lastActivityAt < rhs.lastActivityAt
+                }
+                // Вторично: больше юнитов у исходного квартала
+                if lhs.unitIds.count != rhs.unitIds.count {
+                    return lhs.unitIds.count > rhs.unitIds.count
+                }
+                // Tiebreaker: лексикографически меньший projectId
+                return lhs.id < rhs.id
+            }
+            .first
     }
 }

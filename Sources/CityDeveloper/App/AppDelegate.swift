@@ -46,6 +46,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onDecayChanged = { [weak self] projectId in
             self?.scene?.applyDecayToProject(projectId)
         }
+        // F-06 ruin-priority: атомарная замена руины новым проектом (визуальная анимация расчистки).
+        engine.onProjectRuinsCleared = { [weak self] oldProjectId, newProject in
+            self?.scene?.handleRuinsCleared(oldProjectId: oldProjectId, newProject: newProject)
+        }
 
         bridge = SceneBridge()
         bridge.scene = scene

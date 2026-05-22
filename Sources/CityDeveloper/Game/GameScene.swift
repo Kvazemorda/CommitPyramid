@@ -20,6 +20,9 @@ final class GameScene: SKScene {
 
     private var inspector: SKNode?
     private static let unitIdKey = "unitId"
+    /// Ключ userData для хранения projectId ноды юнита.
+    /// Используется в handleRuinsCleared для быстрого поиска нод старого проекта.
+    static let projectIdKey = "projectId"
 
     var lifeSim: LifeSimulationManager?
     var citizenManager: CitizenManager?
@@ -103,6 +106,83 @@ final class GameScene: SKScene {
         }
     }
 
+    /// F-06 ruin-priority: визуальная анимация расчистки руин при атомарной замене District.
+    ///
+    /// State уже финальный (старый District удалён в CityEngine.applyTaskCompleted) к моменту
+    /// вызова этого метода. Анимация — чисто визуальный слой, в snapshot не попадает.
+    ///
+    /// Тайминг (≤5 сек, AC): fadeOut 2.0 сек ∥ dust 1.5 сек → wait 2.0 сек → district-маркер.
+    /// Итого ~2–2.5 сек на появление маркера — укладывается в окно 3–5 сек с запасом.
+    ///
+    /// Edge cases:
+    /// - Quit во время анимации: state уже финальный, snapshot при terminate сохраняет чистый state.
+    ///   При следующем запуске replay восстанавливает state без повтора анимации.
+    /// - Две параллельных анимации (два новых проекта в одном tail-чанке): анимации идут на разных
+    ///   точках сцены, не пересекаются. State обновлён последовательно до вызова любой анимации.
+    /// - Snapshot во время анимации: видит финальное state (новый District создан, старый удалён).
+    func handleRuinsCleared(oldProjectId: String, newProject: ProjectState) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.didAttach else { return }
+
+            // 1. Найти ноды старого проекта через userData[projectIdKey].
+            //    engine.state.units уже подчищен, но ноды на сцене ещё есть — их фейдим.
+            let oldNodeEntries = self.unitNodes.filter { (_, node) in
+                (node.userData?[Self.projectIdKey] as? String) == oldProjectId
+            }
+
+            // fadeOut(2.0 сек) + removeFromParent + очистка из unitNodes
+            let fadeOutAction = SKAction.fadeOut(withDuration: 2.0)
+            fadeOutAction.timingMode = .easeIn
+            for (uid, node) in oldNodeEntries {
+                node.run(SKAction.sequence([fadeOutAction, .removeFromParent()]))
+                self.unitNodes.removeValue(forKey: uid)
+            }
+
+            // 2. Dust-визуал на позиции нового квартала (~1.5 сек).
+            //    Несколько частиц серым кругом с scale/fade анимацией.
+            let dustPosition = self.isoPosition(grid: newProject.districtOrigin)
+            for i in 0..<5 {
+                let dustNode = SKSpriteNode(color: .gray, size: CGSize(width: 8, height: 8))
+                dustNode.alpha = 0
+                let angle = CGFloat(i) * (2 * .pi / 5)
+                let radius: CGFloat = 20
+                dustNode.position = CGPoint(
+                    x: dustPosition.x + cos(angle) * radius,
+                    y: dustPosition.y + sin(angle) * radius
+                )
+                dustNode.zPosition = 5000
+
+                let dustAnim = SKAction.group([
+                    SKAction.sequence([
+                        SKAction.fadeIn(withDuration: 0.3),
+                        SKAction.wait(forDuration: 0.9),
+                        SKAction.fadeOut(withDuration: 0.3)
+                    ]),
+                    SKAction.sequence([
+                        SKAction.scale(to: 1.5, duration: 0.75),
+                        SKAction.scale(to: 0.5, duration: 0.75)
+                    ])
+                ])
+                self.world.addChild(dustNode)
+                dustNode.run(SKAction.sequence([dustAnim, .removeFromParent()]))
+            }
+
+            // 3. Удалить старый district-маркер.
+            self.districtNodes[oldProjectId]?.removeFromParent()
+            self.districtNodes[oldProjectId] = nil
+
+            // 4. После wait(2.0) — нарисовать маркер нового района.
+            //    Это ЕДИНСТВЕННЫЙ вызов drawDistrictMarker для нового проекта в ruins-ветке:
+            //    CityEngine.applyTaskCompleted не вызывает onProjectCreated в этой ветке.
+            self.world.run(SKAction.sequence([
+                SKAction.wait(forDuration: 2.0),
+                SKAction.run { [weak self] in
+                    self?.drawDistrictMarker(for: newProject)
+                }
+            ]))
+        }
+    }
+
     private func drawUnit(_ unit: UnitState, project: ProjectState) {
         let pos = isoPosition(grid: unit.position)
         let node = UnitSprites.makeNode(unit: unit)
@@ -110,6 +190,7 @@ final class GameScene: SKScene {
         node.zPosition = -CGFloat(unit.position.x + unit.position.y)
         node.userData = NSMutableDictionary()
         node.userData?[Self.unitIdKey] = unit.id
+        node.userData?[Self.projectIdKey] = unit.projectId
 
         let appearScale: CGFloat = 0.4
         node.setScale(appearScale)
