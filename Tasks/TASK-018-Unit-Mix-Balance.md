@@ -493,7 +493,7 @@ _Сложность: —_ (определит лид)
 
 ## Статус
 
-`[x] ready`
+`[x] done`
 
 ## Метаданные
 - Создана PM: 2026-05-22
@@ -502,5 +502,7 @@ _Сложность: —_ (определит лид)
 - Lead-model: opus
 - Plan-review: revised (3 блокера круг 1 → 1 блокер круг 2 → resolved)
 - Lead-trigger: opus (priority P0)
-- Завершена: —
-- Коммит: —
+- Исполнитель: sonnet (middle), retries=0
+- Code-review: approved (opus, P0)
+- Завершена: 2026-05-22
+- Коммит: (заполняется после git commit)

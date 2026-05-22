@@ -28,6 +28,27 @@ enum UnitKind: String, Codable, CaseIterable {
     case obelisk     // обелиск
 }
 
+/// Категория юнита — единый source of truth для пропорций F-07.
+/// Используется UnitPlanner и CityEngine для категориальной выборки.
+enum UnitCategory: String, Codable {
+    case residential    // жилые: shack, house, villa
+    case infrastructure // инфра: well, road, warehouse (Concept F-07 дословно: «инфра — колодец, дорога, склад»)
+    case production     // производство: workshop, raw
+    case social         // социальные: market, forum, temple, obelisk
+}
+
+extension UnitKind {
+    /// Категория юнита. warehouse → .infrastructure по Concept F-07.
+    var category: UnitCategory {
+        switch self {
+        case .shack, .house, .villa:            return .residential
+        case .well, .road, .warehouse:          return .infrastructure
+        case .workshop, .raw:                   return .production
+        case .market, .forum, .temple, .obelisk: return .social
+        }
+    }
+}
+
 struct GridPoint: Codable, Hashable {
     let x: Int
     let y: Int

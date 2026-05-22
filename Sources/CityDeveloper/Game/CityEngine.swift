@@ -215,7 +215,23 @@ final class CityEngine: ObservableObject {
             )
         }
 
-        let kind = unitPlanner.nextUnitKind(forTaskIndex: project.taskCount, stage: project.stage)
+        // Собираем per-category счётчики для проекта (O(N) по units; до ~100 юнитов — микросекунды).
+        // Считаем до добавления нового юнита — счётчики отражают фактическое состояние квартала.
+        let projectUnits = state.units.values.filter { $0.projectId == projectKey }
+        let residentialCount = projectUnits.filter { $0.kind.category == .residential }.count
+        let wellCount        = projectUnits.filter { $0.kind == .well }.count
+        let infraCount       = projectUnits.filter { $0.kind.category == .infrastructure }.count
+        let productionCount  = projectUnits.filter { $0.kind.category == .production }.count
+        let socialCount      = projectUnits.filter { $0.kind.category == .social }.count
+        let kind = unitPlanner.nextUnitKind(
+            forTaskIndex: project.taskCount,
+            stage: project.stage,
+            residentialCount: residentialCount,
+            wellCount: wellCount,
+            infraCount: infraCount,
+            productionCount: productionCount,
+            socialCount: socialCount
+        )
         let position = unitPlanner.nextPosition(
             origin: project.districtOrigin,
             taskIndex: project.taskCount

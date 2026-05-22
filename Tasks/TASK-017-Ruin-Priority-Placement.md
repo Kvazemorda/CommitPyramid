@@ -528,4 +528,4 @@ _Сложность: —_ (определит лид)
 - Исполнитель: sonnet (middle), retries=0
 - Code-review: approved (opus, P0)
 - Завершена: 2026-05-22
-- Коммит: dc037ae
+- Коммит: 2ffd4ba
