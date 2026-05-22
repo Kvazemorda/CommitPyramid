@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var dateFrom: Date = Date()
     @State private var dateTo: Date = Date()
     @State private var didInitDates: Bool = false
+    @State private var journalKindFilter: JournalKindFilter = .all
 
     // Отдельный gate для кнопки журнала: показывается только ПОСЛЕ
     // завершения transition в explore (AC3). Меняется через asyncAfter.
@@ -39,7 +40,8 @@ struct ContentView: View {
                         selectedProject: $selectedProject,
                         dateFrom: $dateFrom,
                         dateTo: $dateTo,
-                        didInitDates: $didInitDates
+                        didInitDates: $didInitDates,
+                        journalKindFilter: $journalKindFilter
                     )
                 } label: {
                     Image(systemName: "list.bullet")

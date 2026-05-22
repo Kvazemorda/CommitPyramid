@@ -27,6 +27,10 @@ struct InspectorOverlayCard: View {
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.paletteInkDark)
 
+            Text("Жителей: \(bridge.populationByProject[project.id] ?? 0)")
+                .font(.system(size: 10))
+                .foregroundColor(.paletteInkDark.opacity(0.6))
+
             Text("\(Self.russianKind(unit.kind)), stage \(unit.tier)")
                 .font(.system(size: 10))
                 .foregroundColor(.paletteInkDark.opacity(0.6))

@@ -98,6 +98,15 @@ final class CitizenManager {
         for projectId in citizensByProject.keys where !stateProjectIds.contains(projectId) {
             removeAllCitizens(projectId: projectId)
         }
+
+        // 5. Publish per-project active count to UI bridge.
+        // Ключи — все проекты из state, чтобы пустые кварталы получали явный 0.
+        var snapshot: [String: Int] = [:]
+        snapshot.reserveCapacity(engine.state.projects.count)
+        for projectId in engine.state.projects.keys {
+            snapshot[projectId] = activeCitizenCount(for: projectId)
+        }
+        scene?.bridge?.populationByProject = snapshot
     }
 
     // MARK: - Waypoints
@@ -220,6 +229,27 @@ final class CitizenManager {
             self.walk(citizen: c)
         }
     }
+
+    // MARK: - Public read API
+
+    /// Количество активных жителей проекта на сцене (без тех, кто доигрывает fade-out).
+    /// Безопасно читать с main thread — CitizenManager main-bound (SKAction).
+    func activeCitizenCount(for projectId: String) -> Int {
+        guard let ids = citizensByProject[projectId] else { return 0 }
+        return ids.subtracting(citizensLeaving).count
+    }
+
+    #if DEBUG
+    /// Test-only seam: вкатывает UUID в индексы без полноценного spawn
+    /// (тот зависит от scene/engine). Имя с префиксом `_test` — для grep'а.
+    /// Доступен ТОЛЬКО в Debug-сборке.
+    func _testSeed(projectId: String, leaving: Bool) -> UUID {
+        let id = UUID()
+        citizensByProject[projectId, default: []].insert(id)
+        if leaving { citizensLeaving.insert(id) }
+        return id
+    }
+    #endif
 
     // MARK: - Remove (two-phase)
 

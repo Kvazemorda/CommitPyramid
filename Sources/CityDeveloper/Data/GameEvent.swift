@@ -2,7 +2,7 @@ import Foundation
 
 struct GameEvent: Codable, Identifiable {
 
-    enum Kind: String, Codable {
+    enum Kind: String, Codable, CaseIterable {
         case taskCompleted = "task_completed"
         case unitBuilt     = "unit_built"
         case stageUp       = "stage_up"

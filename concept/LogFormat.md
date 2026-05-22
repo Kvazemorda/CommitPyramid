@@ -146,3 +146,46 @@ _Это технический контракт между внешним кро
 3. Игра (watcher активен) в течение 2 сек видит изменение, читает новую строку,
    создаёт событие `TaskCompleted` в `events.jsonl`, рисует на карте новый юнит в
    квартале «Test» (создаётся свежий квартал, т.к. ранее не было).
+
+## События в events.jsonl (системные)
+
+Помимо `task_completed`, движок пишет системные события из `applyTaskCompleted`
+и `DecayEngine`. Все используют структуру `GameEvent` (см. `Data/GameEvent.swift`).
+
+### Типы
+
+| Kind            | Когда пишется                                            | Поле `title`              |
+|-----------------|----------------------------------------------------------|---------------------------|
+| `task_completed`| ingest live и из watcher                                 | заголовок задачи          |
+| `unit_built`    | каждый закрытый task → построен новый юнит (`!silent`)   | `UnitKind.label`          |
+| `stage_up`      | повышение стадии квартала 0→…→5 (`!silent`)              | `S<old> → S<new>`         |
+| `restore`       | возврат к проекту с `decayLevel 1..3` (`!silent`)        | nil                       |
+| `decay_tick`    | `DecayEngine` тик подъёма уровня decay                   | nil                       |
+| `fire`          | переход decay 2→3 (визуализация горения)                 | nil                       |
+| `ruins_cleared` | (зарезервирован; пока не пишется отдельно)               | nil                       |
+
+### Порядок для одной задачи (нормативный)
+
+`task_completed` → (`restore` опц.) → `unit_built` → (`stage_up` опц.)
+
+Все четыре события пишутся в рамках одного вызова `applyTaskCompleted` (live-тик).
+В `silent: true`-ветке (replay из лога / snapshot tail) **новых записей не делается**:
+события уже на диске. Идемпотентность гарантирована тем, что
+`apply(.unitBuilt) = apply(.stageUp) = break`.
+
+### Backwards-compat v1 → текущий
+
+Старый лог (только `task_completed` + decay-серия) реплеится без изменений:
+state-агрегаты (`taskCount`, `stage`, `unitIds`) выводятся из `task_completed`-веток.
+Новый лог содержит `unit_built/stage_up`, но они no-op при apply — state идентичен.
+Версия формата НЕ повышается (нет поля `version` в `GameEvent`).
+
+### Поведение при неизвестных `kind`
+
+`GameEvent.Kind` — закрытое `Codable enum` без `@unknown default`. Строка
+`events.jsonl` с неизвестным `kind` пропускается: `EventLog.readAll` ловит
+ошибку декодирования через `try?` и пишет в `ErrorsLog`
+(`EventLog.swift:42-45`). Это значит:
+- старый бинарь, читающий лог с новым `kind`, не падает, но теряет такие строки;
+- при добавлении нового `kind` авторы обязаны обновлять `LogFormat.md` и
+  выдерживать совместимость через `apply = break` либо отдельную no-op-ветку.

@@ -18,7 +18,8 @@ final class JournalWindowController: NSObject, NSWindowDelegate {
               selectedProject: Binding<String?>,
               dateFrom: Binding<Date>,
               dateTo: Binding<Date>,
-              didInitDates: Binding<Bool>) {
+              didInitDates: Binding<Bool>,
+              journalKindFilter: Binding<JournalKindFilter>) {
         // Idempotent: повторное нажатие при открытом окне = makeKey + deminiaturize.
         if let w = window, w.isVisible {
             w.makeKeyAndOrderFront(nil)
@@ -34,7 +35,8 @@ final class JournalWindowController: NSObject, NSWindowDelegate {
             selectedProject: selectedProject,
             dateFrom: dateFrom,
             dateTo: dateTo,
-            didInitDates: didInitDates
+            didInitDates: didInitDates,
+            journalKindFilter: journalKindFilter
         )
         let host = NSHostingController(rootView: panel)
 

@@ -48,10 +48,12 @@ final class CityEngine: ObservableObject {
     }
 
     /// Записывает системное событие в лог, применяет к state и триггерит визуальные колбэки.
-    /// Вызывается из DecayEngine на main queue.
-    func appendSystemEvent(_ kind: GameEvent.Kind, project: String) {
-        let e = GameEvent(ts: Date(), kind: kind, project: project)
+    /// Вызывается из DecayEngine на main queue и из applyTaskCompleted.
+    /// `title` — человекочитаемое описание (имя юнита, "S<old> → S<new>" и т.п.).
+    func appendSystemEvent(_ kind: GameEvent.Kind, project: String, title: String? = nil) {
+        let e = GameEvent(ts: Date(), kind: kind, project: project, title: title)
         eventLog.append(e)
+        events.append(e)
         apply(e, silent: false)
         lastSnapshotEventIndex += 1
         eventsSinceSnapshot += 1
@@ -275,6 +277,11 @@ final class CityEngine: ObservableObject {
         }
 
         if !silent {
+            // Порядок в events.jsonl: task_completed → (restore?) → unit_built → (stage_up?).
+            appendSystemEvent(.unitBuilt, project: projectKey, title: unit.kind.label)
+            if newStage > oldStage {
+                appendSystemEvent(.stageUp, project: projectKey, title: "S\(oldStage) → S\(newStage)")
+            }
             if isNewProject {
                 if let oldId = ruinsClearedFrom {
                     // Ruins-ветка: взаимоисключающий callback.

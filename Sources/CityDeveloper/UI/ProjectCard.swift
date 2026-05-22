@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProjectCard: View {
     let project: ProjectState
+    let population: Int
     let onTap: () -> Void
 
     private static let dateFormatter: DateFormatter = {
@@ -37,6 +38,7 @@ struct ProjectCard: View {
                     HStack(spacing: 8) {
                         Text("Юнитов: \(project.unitIds.count)")
                         Text("Stage \(project.stage)")
+                        Text("Жителей: \(population)")
                         Text(Self.dateFormatter.string(from: project.lastActivityAt))
                     }
                     .font(.system(size: 11))

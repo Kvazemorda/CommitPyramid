@@ -9,6 +9,10 @@ final class SceneBridge: ObservableObject {
     /// Источник истины — `GameScene.showInspector(forUnitId:)` / `hideInspector()`.
     @Published var selectedUnitInfo: (UnitState, ProjectState)? = nil
 
+    /// Активное количество жителей по projectId. Обновляется
+    /// `CitizenManager.tick()` (≈ раз в 2 сек). Пустой словарь — pre-tick.
+    @Published var populationByProject: [String: Int] = [:]
+
     /// Плавно центрирует камеру на изометрической позиции gridPoint.
     func focusOn(gridPoint: GridPoint) {
         scene?.focusCamera(on: gridPoint, duration: 0.4)

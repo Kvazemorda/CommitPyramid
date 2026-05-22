@@ -11,6 +11,9 @@ struct SidePanelView: View {
     @Binding var dateFrom: Date
     @Binding var dateTo: Date
     @Binding var didInitDates: Bool
+    @Binding var journalKindFilter: JournalKindFilter
+
+    @State private var showCustomPopover: Bool = false
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -54,19 +57,13 @@ struct SidePanelView: View {
     }
 
     private var filteredEvents: [GameEvent] {
-        let dateRangeValid = dateFrom <= dateTo
-        return engine.events
-            .sorted { $0.ts > $1.ts }
-            .filter { e in
-                guard e.kind == .taskCompleted else { return false }
-                if let sel = selectedProject, !sel.isEmpty {
-                    guard e.project == sel else { return false }
-                }
-                if dateRangeValid {
-                    guard e.ts >= dateFrom && e.ts <= dateTo.endOfDay else { return false }
-                }
-                return true
-            }
+        JournalFilter.apply(
+            events: engine.events,
+            projectId: selectedProject,
+            dateFrom: dateFrom,
+            dateTo: dateTo,
+            kindFilter: journalKindFilter
+        )
     }
 
     private var isEmpty: Bool {
@@ -163,7 +160,10 @@ struct SidePanelView: View {
             } else {
                 LazyVStack(spacing: 6) {
                     ForEach(sortedProjects, id: \.id) { project in
-                        ProjectCard(project: project) {
+                        ProjectCard(
+                            project: project,
+                            population: bridge.populationByProject[project.id] ?? 0
+                        ) {
                             handleProjectTap(project)
                         }
                         .padding(.horizontal, 8)
@@ -193,6 +193,53 @@ struct SidePanelView: View {
                 }
                 .pickerStyle(.menu)
                 .disabled(isEmpty)
+                .padding(.horizontal, 16)
+
+                HStack(spacing: 6) {
+                    Text("Тип:")
+                        .font(.system(size: 11))
+                        .foregroundColor(.paletteInkDark.opacity(0.7))
+
+                    Menu {
+                        Button("Все типы") {
+                            journalKindFilter = .all
+                        }
+                        Button("Закрытие задачи") {
+                            journalKindFilter = .some([.taskCompleted])
+                        }
+                        Button("Постройки юнитов") {
+                            journalKindFilter = .some([.unitBuilt])
+                        }
+                        Button("Апгрейды стадии") {
+                            journalKindFilter = .some([.stageUp])
+                        }
+                        Button("Decay-события") {
+                            journalKindFilter = .some([.decayTick, .fire, .restore, .ruinsCleared])
+                        }
+                    } label: {
+                        Text(currentFilterLabel)
+                            .font(.system(size: 11))
+                            .frame(minWidth: 120, alignment: .leading)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .disabled(isEmpty)
+
+                    // Отдельная кнопка "Кастом…" — popover привязан к ней, а не к Menu.
+                    // На macOS Menu закрывает себя при выборе, и popover на самом Menu
+                    // получает нестабильный anchor.
+                    Button {
+                        showCustomPopover = true
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 11))
+                            .foregroundColor(.paletteInkDark.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isEmpty)
+                    .popover(isPresented: $showCustomPopover, arrowEdge: .bottom) {
+                        customFilterPopover
+                    }
+                }
                 .padding(.horizontal, 16)
 
                 HStack(spacing: 8) {
@@ -229,6 +276,11 @@ struct SidePanelView: View {
                     .padding(.horizontal, 16)
             } else if dateFrom > dateTo {
                 Text("Диапазон пуст")
+                    .font(.system(size: 11))
+                    .foregroundColor(.paletteInkDark.opacity(0.5))
+                    .padding(.horizontal, 16)
+            } else if journalKindFilter.isEmptySelection {
+                Text("Тип не выбран")
                     .font(.system(size: 11))
                     .foregroundColor(.paletteInkDark.opacity(0.5))
                     .padding(.horizontal, 16)
@@ -310,6 +362,59 @@ struct SidePanelView: View {
             && abs($0.taskTs.timeIntervalSince(event.ts)) < 1.0
         }
     }
+
+    private var currentFilterLabel: String {
+        switch journalKindFilter {
+        case .all: return "Все типы"
+        case .some(let kinds):
+            if kinds.isEmpty { return "Не выбрано" }
+            // Все 7 типов выбраны вручную через popover — семантически = "Все типы".
+            if kinds.count == GameEvent.Kind.allCases.count { return "Все типы" }
+            if kinds.count == 1, let k = kinds.first { return k.displayName }
+            return "Кастом (\(kinds.count))"
+        }
+    }
+
+    private var customFilterPopover: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button("Все") {
+                    // Используем .all, чтобы UI и логика были консистентны:
+                    // currentFilterLabel → "Все типы", filter passes всё.
+                    journalKindFilter = .all
+                }
+                .buttonStyle(.link)
+                Button("Сбросить") {
+                    journalKindFilter = .some([])
+                }
+                .buttonStyle(.link)
+            }
+            Divider()
+            ForEach(GameEvent.Kind.allCases, id: \.self) { kind in
+                Toggle(kind.displayName, isOn: Binding(
+                    get: {
+                        switch journalKindFilter {
+                        case .all: return true
+                        case .some(let kinds): return kinds.contains(kind)
+                        }
+                    },
+                    set: { newVal in
+                        // Если был .all и юзер снимает галку — стартуем с полного набора минус этот.
+                        var current: Set<GameEvent.Kind>
+                        switch journalKindFilter {
+                        case .all: current = Set(GameEvent.Kind.allCases)
+                        case .some(let kinds): current = kinds
+                        }
+                        if newVal { current.insert(kind) } else { current.remove(kind) }
+                        journalKindFilter = .some(current)
+                    }
+                ))
+                .font(.system(size: 12))
+            }
+        }
+        .padding(12)
+        .frame(width: 220)
+    }
 }
 
 // MARK: - Journal Row
@@ -320,6 +425,11 @@ private struct JournalRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            Image(systemName: event.kind.iconName)
+                .font(.system(size: 11))
+                .foregroundColor(.paletteInkDark.opacity(0.6))
+                .frame(width: 14, alignment: .center)
+
             Text(formatter.string(from: event.ts))
                 .font(.system(size: 11, design: .monospaced))
                 .foregroundColor(.paletteInkDark.opacity(0.6))

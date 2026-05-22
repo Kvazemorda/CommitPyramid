@@ -38,6 +38,26 @@ enum UnitCategory: String, Codable {
 }
 
 extension UnitKind {
+    /// Русское название юнита для UI и для `title` системных событий.
+    var label: String {
+        switch self {
+        case .shack:     return "Лачуга"
+        case .house:     return "Дом"
+        case .villa:     return "Вилла"
+        case .well:      return "Колодец"
+        case .road:      return "Дорога"
+        case .warehouse: return "Склад"
+        case .workshop:  return "Мастерская"
+        case .raw:       return "Сырьевая яма"
+        case .market:    return "Рынок"
+        case .forum:     return "Форум"
+        case .temple:    return "Храм"
+        case .obelisk:   return "Обелиск"
+        }
+    }
+}
+
+extension UnitKind {
     /// Категория юнита. warehouse → .infrastructure по Concept F-07.
     var category: UnitCategory {
         switch self {
