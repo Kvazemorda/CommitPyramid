@@ -369,4 +369,4 @@ _Объём: M_
 - Lead-model: opus
 - Plan-review: revised (round 2 approved)
 - Завершена: 2026-05-22
-- Коммит: (см. git log)
+- Коммит: 3246d1b
