@@ -37,85 +37,85 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            GroupBox("Данные") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("tasks.jsonl:")
-                            .frame(width: 100, alignment: .trailing)
-                        Text(draftTasksPath.path)
-                            .truncationMode(.middle)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("Выбрать…") { pickTasks() }
-                    }
-                    HStack {
-                        Text("Папка данных:")
-                            .frame(width: 100, alignment: .trailing)
-                        Text(draftDataDir.path)
-                            .truncationMode(.middle)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Button("Выбрать…") { pickDataDir() }
-                    }
-                }
-                .padding(8)
-            }
-
-            GroupBox("Hotkey") {
-                HStack {
-                    Text("Explore режим:")
-                        .frame(width: 100, alignment: .trailing)
-                    Text(hotkeyDisplay(keyCode: draftKeyCode, modifiers: draftModifiers))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Изменить…") { showingRecorder = true }
-                }
-                .padding(8)
-            }
-
-            GroupBox("Catch-up") {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Интервал, мин:")
-                            .frame(width: 100, alignment: .trailing)
-                        // Live binding: didSet in AppSettings clamps + logs,
-                        // CatchUpScheduler reschedules Timer via Combine sink.
-                        Stepper(value: $settings.catchUpIntervalMinutes, in: 3...60) {
-                            Text("\(settings.catchUpIntervalMinutes)")
-                                .monospacedDigit()
-                                .frame(width: 40, alignment: .trailing)
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 16) {
+                GroupBox("Данные") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("tasks.jsonl:")
+                                .frame(width: 100, alignment: .trailing)
+                            Text(draftTasksPath.path)
+                                .truncationMode(.middle)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Выбрать…") { pickTasks() }
+                        }
+                        HStack {
+                            Text("Папка данных:")
+                                .frame(width: 100, alignment: .trailing)
+                            Text(draftDataDir.path)
+                                .truncationMode(.middle)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Выбрать…") { pickDataDir() }
                         }
                     }
-                    Text("Как часто проверять источники задач (notes, git). Меньше — быстрее реагирует, больше — экономит ресурсы.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    .padding(8)
                 }
-                .padding(8)
+
+                GroupBox("Hotkey") {
+                    HStack {
+                        Text("Explore режим:")
+                            .frame(width: 100, alignment: .trailing)
+                        Text(hotkeyDisplay(keyCode: draftKeyCode, modifiers: draftModifiers))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Изменить…") { showingRecorder = true }
+                    }
+                    .padding(8)
+                }
+
+                GroupBox("Catch-up") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Интервал, мин:")
+                                .frame(width: 100, alignment: .trailing)
+                            // Live binding: didSet in AppSettings clamps + logs,
+                            // CatchUpScheduler reschedules Timer via Combine sink.
+                            Stepper(value: $settings.catchUpIntervalMinutes, in: 3...60) {
+                                Text("\(settings.catchUpIntervalMinutes)")
+                                    .monospacedDigit()
+                                    .frame(width: 40, alignment: .trailing)
+                            }
+                        }
+                        Text("Как часто проверять источники задач (notes, git). Меньше — быстрее реагирует, больше — экономит ресурсы.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                NotesWatcherSection(
+                    settings: settings,
+                    onSourceAdded:   { [weak notesWatcher] spec in notesWatcher?.register(spec) },
+                    onSourceRemoved: { [weak notesWatcher] id   in notesWatcher?.unregister(id: id) }
+                )
+
+                GitWatcherSection(
+                    settings: settings,
+                    onRepoAdded:   { [weak gitWatcher] spec in gitWatcher?.register(spec) },
+                    onRepoRemoved: { [weak gitWatcher] id   in gitWatcher?.unregister(id: id) }
+                )
+
+                HStack {
+                    Spacer()
+                    Button("Отмена") { onCancel() }
+                    Button("Сохранить") { trySave() }
+                        .keyboardShortcut(.return)
+                        .buttonStyle(.borderedProminent)
+                }
             }
-
-            NotesWatcherSection(
-                settings: settings,
-                onSourceAdded:   { [weak notesWatcher] spec in notesWatcher?.register(spec) },
-                onSourceRemoved: { [weak notesWatcher] id   in notesWatcher?.unregister(id: id) }
-            )
-
-            GitWatcherSection(
-                settings: settings,
-                onRepoAdded:   { [weak gitWatcher] spec in gitWatcher?.register(spec) },
-                onRepoRemoved: { [weak gitWatcher] id   in gitWatcher?.unregister(id: id) }
-            )
-
-            Spacer()
-
-            HStack {
-                Spacer()
-                Button("Отмена") { onCancel() }
-                Button("Сохранить") { trySave() }
-                    .keyboardShortcut(.return)
-                    .buttonStyle(.borderedProminent)
-            }
+            .padding(20)
         }
-        .padding(20)
         .frame(minWidth: 640, minHeight: 480)
         .alert("Ошибка", isPresented: .constant(alertMessage != nil)) {
             Button("OK") { alertMessage = nil }
