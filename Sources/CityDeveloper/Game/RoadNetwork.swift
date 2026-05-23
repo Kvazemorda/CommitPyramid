@@ -29,33 +29,38 @@ final class RoadNetwork {
     /// Строит магистраль вдоль ряда (row, y=const) с максимальным числом проходимых клеток.
     /// Проходимая = не .sea и не .mountain.
     func buildMainRoad(cols: Int, rows: Int, biomeReader: BiomeMapReader) {
-        // 1. Найти ряд с максимальным числом walkable-клеток.
+        // Ищем строку с САМЫМ ДЛИННЫМ непрерывным отрезком walkable-клеток.
+        // Это гарантирует одну сплошную полосу без разрывов (иначе море между секциями
+        // создаёт 2-3 визуально отдельные «магистрали»).
         var bestRow = 0
-        var bestCount = -1
+        var bestRunLen = 0
+        var bestRunStart = 0
+
         for y in 0..<rows {
-            var count = 0
+            var runLen = 0, runStart = 0, maxRun = 0, maxStart = 0
             for x in 0..<cols {
                 let b = biomeReader.biome(atX: x, y: y)
-                if b != .sea && b != .mountain { count += 1 }
+                if b != .sea && b != .mountain {
+                    if runLen == 0 { runStart = x }
+                    runLen += 1
+                    if runLen > maxRun { maxRun = runLen; maxStart = runStart }
+                } else {
+                    runLen = 0
+                }
             }
-            if count > bestCount {
-                bestCount = count
+            if maxRun > bestRunLen {
+                bestRunLen = maxRun
                 bestRow = y
+                bestRunStart = maxStart
             }
         }
 
-        // 2. Пройти по выбранному ряду, добавляя только walkable-клетки.
-        //    «Разрывы» в ряду пропускаются — путь не строго непрерывен,
-        //    но в подавляющем большинстве сидов разрывов мало (выбран максимум).
         var cells: [GridPoint] = []
-        cells.reserveCapacity(cols)
-        for x in 0..<cols {
-            let b = biomeReader.biome(atX: x, y: bestRow)
-            if b != .sea && b != .mountain {
-                let p = GridPoint(x: x, y: bestRow)
-                cells.append(p)
-                allCells.insert(p)
-            }
+        cells.reserveCapacity(bestRunLen)
+        for x in bestRunStart..<(bestRunStart + bestRunLen) {
+            let p = GridPoint(x: x, y: bestRow)
+            cells.append(p)
+            allCells.insert(p)
         }
         mainRoadCells = cells
     }

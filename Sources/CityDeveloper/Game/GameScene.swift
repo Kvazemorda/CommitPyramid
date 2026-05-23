@@ -88,6 +88,14 @@ final class GameScene: SKScene {
                 // TASK-035 F-16: передаём биом-карту в CityEngine для UnitPlanner.
                 engine?.biomeReader = biomeMap
                 biomeReader = biomeMap
+
+                // Бесшовный фон за краями тайл-карты: большой спрайт цвета доминантного
+                // краевого биома — убирает «ромб с зелёным фоном» при отдалении.
+                let edgeColor = dominantEdgeBiomeColor(biomeMap, cols: mapTilesPerSide, rows: mapTilesPerSide)
+                backgroundColor = edgeColor
+                let bg = SKSpriteNode(color: edgeColor, size: CGSize(width: 400_000, height: 400_000))
+                bg.zPosition = -2000
+                world.addChild(bg)
             } catch {
                 ErrorsLog.write("GameScene: BiomeClassifier failed (\(error)) — fallback to plain background")
             }
@@ -609,19 +617,33 @@ final class GameScene: SKScene {
         drawRoadCells(roadNetwork.mainRoadCells)
     }
 
-    /// Рисует список клеток как дорожные ромбы (тёмно-коричневый),
-    /// чуть ниже юнитов и выше биом-тайлмапа. Дубликаты по координате игнорируются.
+    /// Возвращает fillColor доминантного биома вдоль периметра карты.
+    private func dominantEdgeBiomeColor(_ map: BiomeMapReader, cols: Int, rows: Int) -> SKColor {
+        var counts: [BiomeKind: Int] = [:]
+        let step = max(1, cols / 32)  // сэмплируем ~32 точки на сторону
+        for x in stride(from: 0, to: cols, by: step) {
+            counts[map.biome(atX: x, y: 0), default: 0] += 1
+            counts[map.biome(atX: x, y: rows - 1), default: 0] += 1
+        }
+        for y in stride(from: 0, to: rows, by: step) {
+            counts[map.biome(atX: 0, y: y), default: 0] += 1
+            counts[map.biome(atX: cols - 1, y: y), default: 0] += 1
+        }
+        let dominant = counts.max(by: { $0.value < $1.value })?.key ?? .meadow
+        return dominant.fillColor
+    }
+
+    /// Рисует список клеток как дорожные ромбы — тот же цвет, что у UnitKind.road.
+    /// Без stroke и тени: просто плоский тайл, не выделяется поверх биома.
     private func drawRoadCells(_ cells: [GridPoint]) {
-        let roadFill   = NSColor(red: 0.29, green: 0.22, blue: 0.16, alpha: 1.0) // #4A3728
-        let roadStroke = NSColor(red: 0.20, green: 0.15, blue: 0.10, alpha: 1.0)
+        // Совпадает с body-цветом roadSpec в UnitSprites.
+        let roadFill = Palette.sandMid.darkened(by: 0.08)
 
         for cell in cells where roadNodes[cell] == nil {
             let node = SKShapeNode(path: diamondPath())
             node.fillColor = roadFill
-            node.strokeColor = roadStroke
-            node.lineWidth = 0.5
+            node.strokeColor = .clear
             node.position = isoPosition(grid: cell)
-            // Чуть ниже юнитов: zPosition юнита = -(x+y); дорога = -(x+y) - 0.5.
             node.zPosition = -CGFloat(cell.x + cell.y) - 0.5
             world.addChild(node)
             roadNodes[cell] = node
