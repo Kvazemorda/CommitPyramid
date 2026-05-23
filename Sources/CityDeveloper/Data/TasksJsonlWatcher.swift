@@ -44,10 +44,13 @@ final class TasksJsonlWatcher {
     func restart(at newURL: URL) {
         stop()
         queue.sync {
+            let pathChanged = newURL.path != self.fileURL.path
             self.fileURL = newURL
-            self.ingestion.offsetBytes = 0
-            self.ingestion.filePath = newURL.path
-            self.ingestion.save()
+            if pathChanged {
+                self.ingestion.offsetBytes = 0
+                self.ingestion.filePath = newURL.path
+                self.ingestion.save()
+            }
         }
         ensureFileExists()
         start()

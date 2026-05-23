@@ -27,23 +27,9 @@ final class BiomeRenderer {
         BiomePair(.stone, .sea),
     ]
 
-    /// Пары, для которых строится overlay (суша↔вода + луг↔пустыня).
-    private static let overlayPairSet: Set<BiomePair> = [
-        BiomePair(.meadow, .river),
-        BiomePair(.meadow, .sea),
-        BiomePair(.desert, .sea),
-        BiomePair(.stone, .sea),
-        BiomePair(.forest, .river),
-        BiomePair(.forest, .sea),
-        BiomePair(.meadow, .desert),
-    ]
-
-    private static let maxOverlayNodes = 3000
-
     // MARK: - Состояние
 
     private let tileMap: SKTileMapNode
-    private var overlayNodes: [SKSpriteNode] = []
     private weak var attachedWorld: SKNode?
 
     /// Плоская биомная сетка row-major: biomeGrid[row * cols + col].
@@ -74,11 +60,11 @@ final class BiomeRenderer {
 
     // MARK: - Публичный API
 
-    /// Прикрепляет тайл-карту и overlay к родительскому узлу.
+    /// Прикрепляет тайл-карту к родительскому узлу.
     func attach(to parent: SKNode) {
         attachedWorld = parent
         parent.addChild(tileMap)
-        buildOverlay(on: parent)
+        buildBiomeLabels(on: parent)
     }
 
     /// Пересобирает рендер из новой карты — для TASK-030 «Сбросить карту».
@@ -89,13 +75,9 @@ final class BiomeRenderer {
                 tileMap.setTileGroup(nil, forColumn: col, row: row)
             }
         }
-        // Удалить overlay
-        for node in overlayNodes { node.removeFromParent() }
-        overlayNodes.removeAll()
-
         doPopulate(from: map)
         if let parent = attachedWorld {
-            buildOverlay(on: parent)
+            buildBiomeLabels(on: parent)
         }
     }
 
@@ -201,48 +183,23 @@ final class BiomeRenderer {
         }
     }
 
-    // MARK: - Overlay-переход (суша↔вода + луг↔пустыня)
+    // MARK: - Debug-лейблы биомов (каждый тайл, с координатами)
 
-    private func buildOverlay(on parent: SKNode) {
+    private func buildBiomeLabels(on parent: SKNode) {
         let cols = tileMap.numberOfColumns
         let rows = tileMap.numberOfRows
-        var count = 0
-        var warnedLimit = false
-
         for row in 0..<rows {
-            if count >= Self.maxOverlayNodes { break }
             for col in 0..<cols {
-                if count >= Self.maxOverlayNodes {
-                    if !warnedLimit {
-                        ErrorsLog.write("BiomeRenderer: overlay node limit (\(Self.maxOverlayNodes)) reached — some transitions omitted")
-                        warnedLimit = true
-                    }
-                    break
-                }
-
-                let center = biomeAt(col: col, row: row)
-
-                let neighbors: [(BiomeKind, Edge)] = [
-                    (biomeAt(col: col,     row: row - 1), .ne),
-                    (biomeAt(col: col,     row: row + 1), .sw),
-                    (biomeAt(col: col + 1, row: row),     .se),
-                    (biomeAt(col: col - 1, row: row),     .nw),
-                ]
-
-                for (neighbor, edge) in neighbors {
-                    guard neighbor != center else { continue }
-                    guard Self.overlayPairSet.contains(BiomePair(center, neighbor)) else { continue }
-                    guard count < Self.maxOverlayNodes else { break }
-
-                    let isoPos = tileMap.centerOfTile(atColumn: col, row: row)
-                    let tex = TileTextureFactory.alphaGradientTexture(color: neighbor.fillColor, edge: edge)
-                    let sprite = SKSpriteNode(texture: tex, size: Self.tileSize)
-                    sprite.position = isoPos
-                    sprite.zPosition = -999
-                    parent.addChild(sprite)
-                    overlayNodes.append(sprite)
-                    count += 1
-                }
+                let biome = biomeAt(col: col, row: row)
+                let label = SKLabelNode(text: "\(String(biome.asciiSymbol))\n\(col),\(row)")
+                label.fontSize = 5
+                label.fontName = "Helvetica"
+                label.fontColor = .white.withAlphaComponent(0.85)
+                label.numberOfLines = 2
+                label.position = tileMap.centerOfTile(atColumn: col, row: row)
+                label.zPosition = -998
+                label.verticalAlignmentMode = .center
+                parent.addChild(label)
             }
         }
     }

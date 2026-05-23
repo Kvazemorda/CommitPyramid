@@ -289,7 +289,7 @@ struct BiomeClassifier {
 
     /// Прокладывает одну реку от source вниз по градиенту высоты до моря или края.
     /// Ограничивает меандрирование: ширина русла (отклонение от стартовой колонки) ≤ maxRiverHalfWidth.
-    private static let maxRiverHalfWidth = 3  // max ±3 клетки от start X → ширина bbox ≤ 7
+    private static let maxRiverHalfWidth = 15  // was 3, increased for natural meandering
 
     private static func carveOnePath(from startIdx: Int, cells: inout [BiomeKind],
                                       W: Int, H: Int, world: NoiseMap) {

@@ -89,14 +89,6 @@ final class GameScene: SKScene {
 
         addChild(world)
 
-        let watermark = SKLabelNode(text: "CityDeveloper")
-        watermark.fontName = "Helvetica-Bold"
-        watermark.fontSize = 14
-        watermark.fontColor = Palette.inkDark.withAlphaComponent(0.35)
-        watermark.position = CGPoint(x: 0, y: -10)
-        watermark.zPosition = -500
-        world.addChild(watermark)
-
         didAttach = true
 
         if let engine {
@@ -105,7 +97,7 @@ final class GameScene: SKScene {
             }
             for unit in engine.state.units.values {
                 if let project = engine.state.projects[unit.projectId] {
-                    drawUnit(unit, project: project)
+                    drawUnit(unit, project: project, animated: false)
                 }
             }
         }
@@ -188,14 +180,6 @@ final class GameScene: SKScene {
             engine?.biomeReader = biomeMap
         }
 
-        let watermark = SKLabelNode(text: "CityDeveloper")
-        watermark.fontName = "Helvetica-Bold"
-        watermark.fontSize = 14
-        watermark.fontColor = Palette.inkDark.withAlphaComponent(0.35)
-        watermark.position = CGPoint(x: 0, y: -10)
-        watermark.zPosition = -500
-        world.addChild(watermark)
-
         // Draw any existing state (likely empty after reset, but future-safe).
         if let engine {
             for project in engine.state.projects.values {
@@ -203,7 +187,7 @@ final class GameScene: SKScene {
             }
             for unit in engine.state.units.values {
                 if let project = engine.state.projects[unit.projectId] {
-                    drawUnit(unit, project: project)
+                    drawUnit(unit, project: project, animated: false)
                 }
             }
         }
@@ -317,7 +301,7 @@ final class GameScene: SKScene {
         }
     }
 
-    private func drawUnit(_ unit: UnitState, project: ProjectState) {
+    private func drawUnit(_ unit: UnitState, project: ProjectState, animated: Bool = true) {
         let pos = isoPosition(grid: unit.position)
         // Шаг 4 (TASK-019): используем категориальный tier-спрайт по stage квартала.
         // makeStageNode устанавливает userData[unitIdKey/projectIdKey] внутри,
@@ -329,18 +313,20 @@ final class GameScene: SKScene {
         node.userData?[Self.unitIdKey] = unit.id
         node.userData?[Self.projectIdKey] = unit.projectId
 
-        let appearScale: CGFloat = 0.4
-        node.setScale(appearScale)
-        node.alpha = 0
         world.addChild(node)
         unitNodes[unit.id] = node
 
-        let group = SKAction.group([
-            SKAction.fadeIn(withDuration: 0.4),
-            SKAction.scale(to: 1.0, duration: 0.5),
-        ])
-        group.timingMode = .easeOut
-        node.run(group)
+        if animated {
+            let appearScale: CGFloat = 0.4
+            node.setScale(appearScale)
+            node.alpha = 0
+            let group = SKAction.group([
+                SKAction.fadeIn(withDuration: 0.4),
+                SKAction.scale(to: 1.0, duration: 0.5),
+            ])
+            group.timingMode = .easeOut
+            node.run(group)
+        }
 
         // При replay — применяем decay overlay сразу если проект имеет decayLevel > 0
         if let project = engine?.state.projects[unit.projectId], project.decayLevel > 0 {
@@ -689,15 +675,23 @@ final class GameScene: SKScene {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        let delta = event.scrollingDeltaY
-        let factor: CGFloat = 1.0 - delta * 0.02
-        // Защита от NaN / Inf при экстремально быстром скролле. AC edge-case.
-        guard factor.isFinite, factor > 0 else { return }
-        let raw = cameraNode.xScale * factor
-        let newScale = min(maxZoomOut, max(minZoomIn, raw))
-        cameraNode.xScale = newScale
-        cameraNode.yScale = newScale
-        clampCameraPosition()
+        if event.hasPreciseScrollingDeltas {
+            // Two-finger trackpad → PAN
+            cameraNode.position.x -= event.scrollingDeltaX
+            cameraNode.position.y -= event.scrollingDeltaY
+            clampCameraPosition()
+        } else {
+            // Mouse wheel → ZOOM
+            let delta = event.scrollingDeltaY
+            let factor: CGFloat = 1.0 - delta * 0.02
+            // Защита от NaN / Inf при экстремально быстром скролле. AC edge-case.
+            guard factor.isFinite, factor > 0 else { return }
+            let raw = cameraNode.xScale * factor
+            let newScale = min(maxZoomOut, max(minZoomIn, raw))
+            cameraNode.xScale = newScale
+            cameraNode.yScale = newScale
+            clampCameraPosition()
+        }
     }
 
     /// Pinch / magnify (трекпад). AC-1,5.

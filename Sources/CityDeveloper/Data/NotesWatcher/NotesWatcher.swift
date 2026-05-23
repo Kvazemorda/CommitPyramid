@@ -82,6 +82,9 @@ final class NotesWatcher: EventSource, @unchecked Sendable {
             mdFiles = listMarkdownFiles(in: spec.path, recursive: false)
         case .folderRecursive:
             mdFiles = listMarkdownFiles(in: spec.path, recursive: true)
+        case .appleNoteFolder:
+            scanAppleNotesFolder(spec: spec, stateStore: stateStores[spec.id])
+            return
         }
 
         // Soft-warn for huge vaults
@@ -226,9 +229,100 @@ final class NotesWatcher: EventSource, @unchecked Sendable {
         }
     }
 
+    // MARK: - Apple Notes scanning
+
+    /// Scans all notes in the named Apple Notes folder and processes them.
+    private func scanAppleNotesFolder(spec: NotesSourceSpec, stateStore: NotesStateStore?) {
+        guard let stateStore else { return }
+
+        // Extract folder name: apple-notes:///MyFolder → "MyFolder"
+        let rawLastComponent = spec.path.lastPathComponent
+        let folderName = rawLastComponent.removingPercentEncoding ?? rawLastComponent
+
+        let script = """
+        tell application "Notes"
+            set output to ""
+            try
+                set theFolder to folder "\(folderName)"
+                repeat with aNote in (notes of theFolder)
+                    set output to output & "---NOTESEP---" & (body of aNote) & linefeed
+                end repeat
+            end try
+            return output
+        end tell
+        """
+
+        guard let raw = runOsascript(script), !raw.isEmpty else { return }
+
+        let parts = raw.components(separatedBy: "---NOTESEP---")
+        for part in parts {
+            let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let stripped = stripHTML(trimmed)
+            processFileContent(
+                text: stripped,
+                fileURL: spec.path,
+                spec: spec,
+                effectiveMode: .sidecarDedup,
+                stateStore: stateStore
+            )
+        }
+    }
+
+    /// Writes `script` to a temp file and runs `/usr/bin/osascript`, returning stdout.
+    private func runOsascript(_ script: String) -> String? {
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("citynotes_\(UUID().uuidString).applescript")
+        do {
+            try script.write(to: tmpURL, atomically: true, encoding: .utf8)
+        } catch {
+            ErrorsLog.write("NotesWatcher: failed to write osascript temp file: \(error)")
+            return nil
+        }
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = [tmpURL.path]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = Pipe()   // suppress stderr noise
+
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+        } catch {
+            ErrorsLog.write("NotesWatcher: osascript launch failed: \(error)")
+            return nil
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Strips HTML tags and decodes common HTML entities from a string.
+    private func stripHTML(_ html: String) -> String {
+        // Remove everything between < and > (tags)
+        var result = html.replacingOccurrences(
+            of: "<[^>]+>",
+            with: "",
+            options: .regularExpression
+        )
+        // Decode common HTML entities
+        result = result
+            .replacingOccurrences(of: "&amp;",  with: "&")
+            .replacingOccurrences(of: "&lt;",   with: "<")
+            .replacingOccurrences(of: "&gt;",   with: ">")
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+        return result
+    }
+
     // MARK: - DispatchSource live mode
 
     private func attachDispatchSource(for spec: NotesSourceSpec) {
+        // Apple Notes sources have no filesystem path — skip DispatchSource setup.
+        guard spec.kind != .appleNoteFolder else { return }
+
         // For all kinds we watch the top-level path: the file itself (.file),
         // or the directory (.folder / .folderRecursive).
         let watchURL = spec.path

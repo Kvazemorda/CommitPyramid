@@ -27,7 +27,7 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottomTrailing) {
-                SpriteView(scene: scene, preferredFramesPerSecond: 60)
+                GameSpriteView(scene: scene)
                     .ignoresSafeArea()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 

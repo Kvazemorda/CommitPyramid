@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let screen = NSScreen.main ?? NSScreen.screens.first!
 
         appSettings = AppSettings.load()
+        ErrorsLog.write("DataSources: settings=\(appSettings.dataDirectory.path) | tasks=\(appSettings.tasksJsonlPath.path) | worldmap=\(appSettings.dataDirectory.appendingPathComponent("worldmap.json").path) | events=\(appSettings.dataDirectory.appendingPathComponent("events.jsonl").path) | state=\(appSettings.dataDirectory.appendingPathComponent("state.json").path)")
 
         // TASK-026: бутстрап шумовой карты мира до создания GameScene.
         // Синхронно на main-thread; при первом запуске ≤50 мс (256×256 Perlin, M-серия).

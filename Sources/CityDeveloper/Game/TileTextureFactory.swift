@@ -60,7 +60,6 @@ enum TileTextureFactory {
     private static func makeSolidTexture(color: SKColor) -> SKTexture {
         let image = NSImage(size: pixelSize)
         image.lockFocus()
-        defer { image.unlockFocus() }
 
         let path = diamondPath()
         color.setFill()
@@ -72,6 +71,7 @@ enum TileTextureFactory {
         path.lineWidth = 0.5
         path.stroke()
 
+        image.unlockFocus()
         let texture = SKTexture(image: image)
         texture.filteringMode = .linear
         return texture
@@ -81,7 +81,6 @@ enum TileTextureFactory {
     private static func makeTransitionTexture(from base: SKColor, to other: SKColor, edge: Edge) -> SKTexture {
         let image = NSImage(size: pixelSize)
         image.lockFocus()
-        defer { image.unlockFocus() }
 
         // Шаг 1: base-заливка
         let basePath = diamondPath()
@@ -96,6 +95,7 @@ enum TileTextureFactory {
         other.withAlphaComponent(0.55).setFill()
         strip.fill()
 
+        image.unlockFocus()
         let texture = SKTexture(image: image)
         texture.filteringMode = .linear
         return texture
@@ -105,13 +105,10 @@ enum TileTextureFactory {
     private static func makeAlphaGradientTexture(color: SKColor, edge: Edge) -> SKTexture {
         let image = NSImage(size: pixelSize)
         image.lockFocus()
-        defer { image.unlockFocus() }
 
         guard let ctx = NSGraphicsContext.current?.cgContext else {
             image.unlockFocus()
-            let fallbackImage = NSImage(size: pixelSize)
-            let tex = SKTexture(image: fallbackImage)
-            return tex
+            return SKTexture()
         }
 
         // Клип к ромбу
@@ -131,12 +128,11 @@ enum TileTextureFactory {
             CGColor(red: r, green: g, blue: b, alpha: 0.0)
         ] as CFArray
 
-        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0.0, 1.0]) else {
-            return SKTexture(image: image)
+        if let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0.0, 1.0]) {
+            ctx.drawLinearGradient(gradient, start: startPt, end: endPt, options: [])
         }
 
-        ctx.drawLinearGradient(gradient, start: startPt, end: endPt, options: [])
-
+        image.unlockFocus()
         let texture = SKTexture(image: image)
         texture.filteringMode = .linear
         return texture
@@ -171,6 +167,8 @@ enum TileTextureFactory {
     }
 
     /// Треугольная полоса у ребра ромба (примерно 35% площади).
+    /// Y-координаты инвертированы (Y-up NSImage → Y-down SKTexture bitmap):
+    ///   вершина «top» = y=0 (верхний-правый в screen), «bottom» = y=h.
     private static func edgeStripPath(edge: Edge, pixelSize: CGSize) -> NSBezierPath {
         let w = pixelSize.width
         let h = pixelSize.height
@@ -178,39 +176,42 @@ enum TileTextureFactory {
 
         let path = NSBezierPath()
         switch edge {
-        case .ne: // правый верх: top→right→mid-right
-            path.move(to: NSPoint(x: w / 2, y: h))
-            path.line(to: NSPoint(x: w, y: mid))
-            path.line(to: NSPoint(x: w * 0.65, y: mid))
-            path.line(to: NSPoint(x: w / 2, y: h * 0.65))
-        case .nw: // левый верх: top→left→mid-left
-            path.move(to: NSPoint(x: w / 2, y: h))
-            path.line(to: NSPoint(x: 0, y: mid))
-            path.line(to: NSPoint(x: w * 0.35, y: mid))
-            path.line(to: NSPoint(x: w / 2, y: h * 0.65))
-        case .se: // правый низ: bottom→right→mid-right
+        case .ne: // верхний-правый (NE в screen): north→right
             path.move(to: NSPoint(x: w / 2, y: 0))
             path.line(to: NSPoint(x: w, y: mid))
             path.line(to: NSPoint(x: w * 0.65, y: mid))
             path.line(to: NSPoint(x: w / 2, y: h * 0.35))
-        case .sw: // левый низ: bottom→left→mid-left
+        case .nw: // верхний-левый (NW в screen): north→left
             path.move(to: NSPoint(x: w / 2, y: 0))
             path.line(to: NSPoint(x: 0, y: mid))
             path.line(to: NSPoint(x: w * 0.35, y: mid))
             path.line(to: NSPoint(x: w / 2, y: h * 0.35))
+        case .se: // нижний-правый (SE в screen): south→right
+            path.move(to: NSPoint(x: w / 2, y: h))
+            path.line(to: NSPoint(x: w, y: mid))
+            path.line(to: NSPoint(x: w * 0.65, y: mid))
+            path.line(to: NSPoint(x: w / 2, y: h * 0.65))
+        case .sw: // нижний-левый (SW в screen): south→left
+            path.move(to: NSPoint(x: w / 2, y: h))
+            path.line(to: NSPoint(x: 0, y: mid))
+            path.line(to: NSPoint(x: w * 0.35, y: mid))
+            path.line(to: NSPoint(x: w / 2, y: h * 0.65))
         }
         path.close()
         return path
     }
 
     /// Начало и конец линейного градиента для ребра.
+    /// SKTexture(image:) хранит bitmap с row-0 = верх, поэтому Y-ось инвертирована
+    /// относительно NSImage Y-up drawing. Чтобы градиент лёг на правильный угол:
+    ///   .ne = верхний-правый в screen → нижний-правый в NSImage Y-up → (w, 0)
     private static func gradientPoints(edge: Edge, size: CGSize) -> (CGPoint, CGPoint) {
         let w = size.width, h = size.height
         switch edge {
-        case .ne: return (CGPoint(x: w, y: h),      CGPoint(x: w / 2, y: h / 2))
-        case .nw: return (CGPoint(x: 0, y: h),      CGPoint(x: w / 2, y: h / 2))
-        case .se: return (CGPoint(x: w, y: 0),      CGPoint(x: w / 2, y: h / 2))
-        case .sw: return (CGPoint(x: 0, y: 0),      CGPoint(x: w / 2, y: h / 2))
+        case .ne: return (CGPoint(x: w, y: 0),      CGPoint(x: w / 2, y: h / 2))
+        case .nw: return (CGPoint(x: 0, y: 0),      CGPoint(x: w / 2, y: h / 2))
+        case .se: return (CGPoint(x: w, y: h),      CGPoint(x: w / 2, y: h / 2))
+        case .sw: return (CGPoint(x: 0, y: h),      CGPoint(x: w / 2, y: h / 2))
         }
     }
 }

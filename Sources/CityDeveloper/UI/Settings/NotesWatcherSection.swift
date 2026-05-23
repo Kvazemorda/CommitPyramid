@@ -38,6 +38,7 @@ struct NotesWatcherSection: View {
 
                 HStack {
                     Button("Добавить источник…") { pickSource() }
+                    Button("Из Apple Notes…") { pickAppleNotesFolder() }
                     Spacer()
                 }
                 .padding(.top, 2)
@@ -172,6 +173,68 @@ struct NotesWatcherSection: View {
         onSourceAdded?(spec)
     }
 
+    private func pickAppleNotesFolder() {
+        // Ask Apple Notes for a list of all folder names via osascript.
+        let listScript = "tell application \"Notes\"\nget name of every folder\nend tell"
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        proc.arguments = ["-e", listScript]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = Pipe()
+        do {
+            try proc.run()
+            proc.waitUntilExit()
+        } catch {
+            ErrorsLog.write("NotesWatcherSection: osascript failed: \(error)")
+            return
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let raw = String(data: data, encoding: .utf8) ?? ""
+
+        // Parse comma-separated list returned by osascript
+        let folderNames = raw
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !folderNames.isEmpty else {
+            let alert = NSAlert()
+            alert.messageText = "Папки Apple Notes не найдены"
+            alert.informativeText = "Убедитесь, что приложение Notes запущено и содержит папки."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return
+        }
+
+        // Show alert with a popup button listing folder names
+        let alert = NSAlert()
+        alert.messageText = "Выберите папку Apple Notes"
+        alert.addButton(withTitle: "Выбрать")
+        alert.addButton(withTitle: "Отмена")
+
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26), pullsDown: false)
+        for name in folderNames {
+            popup.addItem(withTitle: name)
+        }
+        alert.accessoryView = popup
+
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        let selectedFolder = popup.titleOfSelectedItem ?? folderNames[0]
+        guard let url = URL(string: "apple-notes:///\(selectedFolder.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? selectedFolder)") else { return }
+
+        let spec = NotesSourceSpec(path: url, kind: .appleNoteFolder, mode: .sidecarDedup)
+
+        // Avoid duplicates
+        guard !settings.notesSources.contains(where: { $0.id == spec.id }) else { return }
+
+        settings.notesSources.append(spec)
+        settings.save()
+        onSourceAdded?(spec)
+    }
+
     private func removeSource(id: String) {
         settings.notesSources.removeAll { $0.id == id }
         settings.save()
@@ -192,6 +255,7 @@ struct NotesWatcherSection: View {
         case .file:            return "doc.text"
         case .folder:          return "folder"
         case .folderRecursive: return "folder.badge.plus"
+        case .appleNoteFolder: return "note.text"
         }
     }
 
@@ -200,6 +264,7 @@ struct NotesWatcherSection: View {
         case .file:            return "Файл"
         case .folder:          return "Папка"
         case .folderRecursive: return "Папка (рекурсивно)"
+        case .appleNoteFolder: return "Apple Notes папка"
         }
     }
 }

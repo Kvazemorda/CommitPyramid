@@ -10,6 +10,8 @@ struct NotesSourceSpec: Codable, Identifiable, Hashable {
         case file
         case folder
         case folderRecursive
+        /// An Apple Notes folder (not a filesystem folder).
+        case appleNoteFolder
     }
 
     enum ProcessingMode: String, Codable, CaseIterable {
