@@ -28,40 +28,63 @@ final class RoadNetwork {
 
     /// Строит магистраль вдоль ряда (row, y=const) с максимальным числом проходимых клеток.
     /// Проходимая = не .sea и не .mountain.
+    /// Строит магистраль от визуального левого угла карты (0, rows-1)
+    /// до визуального правого угла (cols-1, 0) с синусоидальным извивом.
+    /// Путь НИКОГДА не пересекает море: при попадании на морскую клетку
+    /// алгоритм ищет ближайшую сухопутную клетку перпендикулярно диагонали.
     func buildMainRoad(cols: Int, rows: Int, biomeReader: BiomeMapReader) {
-        // Ищем строку с САМЫМ ДЛИННЫМ непрерывным отрезком walkable-клеток.
-        // Это гарантирует одну сплошную полосу без разрывов (иначе море между секциями
-        // создаёт 2-3 визуально отдельные «магистрали»).
-        var bestRow = 0
-        var bestRunLen = 0
-        var bestRunStart = 0
+        let amplitude: Double = 14   // максимальное отклонение в тайлах
+        let waves:     Double = 3.0  // количество волн на всю длину пути
 
-        for y in 0..<rows {
-            var runLen = 0, runStart = 0, maxRun = 0, maxStart = 0
-            for x in 0..<cols {
-                let b = biomeReader.biome(atX: x, y: y)
-                if b != .sea && b != .mountain {
-                    if runLen == 0 { runStart = x }
-                    runLen += 1
-                    if runLen > maxRun { maxRun = runLen; maxStart = runStart }
-                } else {
-                    runLen = 0
-                }
-            }
-            if maxRun > bestRunLen {
-                bestRunLen = maxRun
-                bestRow = y
-                bestRunStart = maxStart
-            }
-        }
+        // Шагов достаточно, чтобы гарантировать непрерывность (каждый тайл покрыт).
+        let steps = (cols + rows) * 3
 
         var cells: [GridPoint] = []
-        cells.reserveCapacity(bestRunLen)
-        for x in bestRunStart..<(bestRunStart + bestRunLen) {
-            let p = GridPoint(x: x, y: bestRow)
+        var lastAdded: GridPoint? = nil
+
+        for step in 0...steps {
+            let t = Double(step) / Double(steps)
+
+            // Базовая диагональ (0,rows-1) → (cols-1,0)
+            let baseX = t * Double(cols - 1)
+            let baseY = (1.0 - t) * Double(rows - 1)
+
+            // Синусоидальный сдвиг перпендикулярно диагонали.
+            // Перпендикуляр к направлению (1,-1)/√2 — это (1,1)/√2,
+            // поэтому оба x и y смещаются одновременно.
+            let sine = amplitude * sin(t * waves * .pi * 2)
+            let perp = sine * 0.707   // ≈ sine / √2
+
+            var cx = max(0, min(cols - 1, Int((baseX + perp).rounded())))
+            var cy = max(0, min(rows - 1, Int((baseY + perp).rounded())))
+
+            // Если клетка — море, ищем ближайшую не-морскую
+            // в направлении, перпендикулярном диагонали.
+            if biomeReader.biome(atX: cx, y: cy) == .sea {
+                var found = false
+                outer: for delta in 1...25 {
+                    let candidates: [(Int, Int)] = [
+                        (cx - delta, cy - delta), (cx + delta, cy + delta),
+                        (cx - delta, cy),          (cx, cy - delta),
+                        (cx + delta, cy),          (cx, cy + delta),
+                    ]
+                    for (nx, ny) in candidates {
+                        if nx >= 0, nx < cols, ny >= 0, ny < rows,
+                           biomeReader.biome(atX: nx, y: ny) != .sea {
+                            cx = nx; cy = ny; found = true; break outer
+                        }
+                    }
+                }
+                if !found { continue }
+            }
+
+            let p = GridPoint(x: cx, y: cy)
+            guard p != lastAdded else { continue }
             cells.append(p)
             allCells.insert(p)
+            lastAdded = p
         }
+
         mainRoadCells = cells
     }
 

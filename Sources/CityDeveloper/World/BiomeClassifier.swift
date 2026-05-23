@@ -39,8 +39,8 @@ struct BiomeClassifier {
     /// Минимальное число различных биомов (AC1). Реки отключены — достаточно 6.
     static let minDiversity: Int = 6
 
-    /// Максимальная доля доминирующего биома (AC1). BUG-008: снижен с 0.75 до 0.40.
-    static let maxDominantShare: Double = 0.40
+    /// Максимальная доля доминирующего биома. Поднят до 0.65 — море занимает правый нижний угол.
+    static let maxDominantShare: Double = 0.65
 
     /// Минимальная доля каждого биома (BUG-008: цель ≥5%).
     static let minBiomeShare: Double = 0.05
@@ -157,33 +157,36 @@ struct BiomeClassifier {
     private static func classifyLand(world: NoiseMap, W: Int, thresholds t: Thresholds) -> [BiomeKind] {
         let n = W * W
         var cells = [BiomeKind](repeating: .meadow, count: n)
+        let wf = Float(W - 1)
+
         for i in 0 ..< n {
             let h    = world.height[i]
             let temp = world.temperature[i]
             let hum  = world.humidity[i]
 
+            // Географический градиент: море концентрируется в правом нижнем углу.
+            // nx+ny=0 при (0,0)=визуальный верх; nx+ny=2 при (cols-1,rows-1)=визуальный низ.
+            // Порог 1.0 = главная диагональ (левый↔правый визуальный угол).
+            // Множитель 0.35: мягкий, чтобы sea не превысило ~45%.
+            let nx = Float(i % W) / wf   // 0..1
+            let ny = Float(i / W) / wf   // 0..1
+            let grad = max(0, nx + ny - 1.0)   // 0 в верхней половине, >0 ниже диагонали
+            let effectiveSeaLevel = t.seaLevel + grad * 0.35
+
             if h >= t.mountainLevel {
-                // Горные вершины
                 cells[i] = .mountain
             } else if h >= t.stoneLevel {
-                // Предгорье / каменистые склоны
                 cells[i] = .stone
-            } else if h < t.seaLevel {
-                // Кандидат в море; flood-fill отфильтрует «лужи»
+            } else if h < effectiveSeaLevel {
                 cells[i] = .sea
             } else {
-                // --- Суша: классификация по температуре + влажности ---
                 if temp < t.coldTemp {
-                    // Холодная тундра: переиспользуем .stone (каменистая холодная земля)
                     cells[i] = .stone
                 } else if temp >= t.hotTemp && hum < t.dryHumidity {
-                    // Жарко + сухо → пустыня
                     cells[i] = .desert
                 } else if hum >= t.wetHumidity {
-                    // Высокая влажность → лес
                     cells[i] = .forest
                 } else {
-                    // Умеренные условия → луг (дефолт)
                     cells[i] = .meadow
                 }
             }
