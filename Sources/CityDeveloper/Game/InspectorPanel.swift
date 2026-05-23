@@ -1,5 +1,9 @@
 import SpriteKit
 
+/// Legacy SpriteKit popup — показывался в world-coords до TASK-016.
+/// После BUG-001 заменён на SwiftUI InspectorOverlayCard (trailing center).
+/// Класс оставлен для истории; все вызовы в GameScene отключены.
+@available(*, deprecated, message: "Use InspectorOverlayCard (SwiftUI). SpriteKit popup removed in BUG-001.")
 enum InspectorPanel {
 
     static func build(unit: UnitState, project: ProjectState) -> SKNode {

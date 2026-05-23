@@ -705,19 +705,21 @@ final class GameScene: SKScene {
 
     func showInspector(near anchor: CGPoint, unit: UnitState, project: ProjectState) {
         hideInspector()
-        let panel = InspectorPanel.build(unit: unit, project: project)
-        let unitNode = unitNodes[unit.id]
-        let anchorWorld = unitNode?.position ?? anchor
-        panel.position = CGPoint(x: anchorWorld.x + 80, y: anchorWorld.y + 40)
-        panel.zPosition = 100000
-        world.addChild(panel)
-        inspector = panel
+        // BUG-001: SpriteKit InspectorPanel отключён — используем SwiftUI InspectorOverlayCard.
+        // let panel = InspectorPanel.build(unit: unit, project: project)
+        // let unitNode = unitNodes[unit.id]
+        // let anchorWorld = unitNode?.position ?? anchor
+        // panel.position = CGPoint(x: anchorWorld.x + 80, y: anchorWorld.y + 40)
+        // panel.zPosition = 100000
+        // world.addChild(panel)
+        // inspector = panel
         bridge?.selectedUnitInfo = (unit, project)
     }
 
     private func hideInspector() {
-        inspector?.removeFromParent()
-        inspector = nil
+        // BUG-001: SpriteKit InspectorPanel отключён; inspector всегда nil.
+        // inspector?.removeFromParent()
+        // inspector = nil
         bridge?.selectedUnitInfo = nil
     }
 
