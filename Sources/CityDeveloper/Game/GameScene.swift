@@ -45,6 +45,13 @@ final class GameScene: SKScene {
     /// Рендер биомов (TASK-028). Хранится для rebuild при TASK-030 (сброс карты).
     private var biomeRenderer: BiomeRenderer?
 
+    /// F-21: сеть дорог (магистраль + ветки кварталов).
+    let roadNetwork = RoadNetwork()
+    /// Визуальные ноды дорог по grid-координате (для cleanup при reset).
+    private var roadNodes: [GridPoint: SKNode] = [:]
+    /// Биом-ридер, кэшированный для (re)build дорожной сети.
+    private var biomeReader: BiomeMapReader?
+
     override func didMove(to view: SKView) {
         // За краями тайл-карты — цвет травы (fallback при pan/zoom за границу).
         // Lawn — временная подложка; заменена BiomeRenderer (TASK-028).
@@ -80,6 +87,7 @@ final class GameScene: SKScene {
                 biomeRenderer = renderer
                 // TASK-035 F-16: передаём биом-карту в CityEngine для UnitPlanner.
                 engine?.biomeReader = biomeMap
+                biomeReader = biomeMap
             } catch {
                 ErrorsLog.write("GameScene: BiomeClassifier failed (\(error)) — fallback to plain background")
             }
@@ -91,8 +99,16 @@ final class GameScene: SKScene {
 
         didAttach = true
 
+        // F-21: построить магистраль ПОСЛЕ biomeRenderer и до восстановления юнитов,
+        // чтобы существующие кварталы (из snapshot) получили свои ветки.
+        buildRoadNetwork()
+        engine?.roadNetwork = roadNetwork
+
         if let engine {
             for project in engine.state.projects.values {
+                // Подключаем ветки для уже существующих кварталов (replay из snapshot).
+                let branch = roadNetwork.connectDistrict(projectId: project.id, origin: project.districtOrigin)
+                drawRoadCells(branch)
                 drawDistrictMarker(for: project)
             }
             for unit in engine.state.units.values {
@@ -113,6 +129,7 @@ final class GameScene: SKScene {
         let cm = CitizenManager()
         cm.engine = engine
         cm.scene = self
+        cm.roadNetwork = roadNetwork
         citizenManager = cm
         run(SKAction.sequence([
             SKAction.wait(forDuration: 1.5),
@@ -165,11 +182,17 @@ final class GameScene: SKScene {
         districtNodes.removeAll()
         inspector = nil
 
+        // F-21: сбрасываем дорожную сеть и её ноды.
+        roadNetwork.reset()
+        roadNodes.values.forEach { $0.removeFromParent() }
+        roadNodes.removeAll()
+
         lifeSim?.stop()
         lifeSim = nil
         citizenManager?.stop()
         citizenManager = nil
         biomeRenderer = nil
+        biomeReader = nil
 
         // Re-render biome tile map with the new worldMap.
         if let noiseMap = worldMap,
@@ -178,11 +201,18 @@ final class GameScene: SKScene {
             renderer.attach(to: world)
             biomeRenderer = renderer
             engine?.biomeReader = biomeMap
+            biomeReader = biomeMap
         }
+
+        // F-21: перестроить дорожную сеть после новой биом-карты.
+        buildRoadNetwork()
+        engine?.roadNetwork = roadNetwork
 
         // Draw any existing state (likely empty after reset, but future-safe).
         if let engine {
             for project in engine.state.projects.values {
+                let branch = roadNetwork.connectDistrict(projectId: project.id, origin: project.districtOrigin)
+                drawRoadCells(branch)
                 drawDistrictMarker(for: project)
             }
             for unit in engine.state.units.values {
@@ -202,6 +232,7 @@ final class GameScene: SKScene {
         let cm = CitizenManager()
         cm.engine = engine
         cm.scene = self
+        cm.roadNetwork = roadNetwork
         citizenManager = cm
         run(SKAction.sequence([
             SKAction.wait(forDuration: 1.5),
@@ -220,6 +251,9 @@ final class GameScene: SKScene {
     func markDistrict(project: ProjectState) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.didAttach else { return }
+            // F-21: подключаем новый квартал к магистрали и отрисовываем ветку.
+            let branch = self.roadNetwork.connectDistrict(projectId: project.id, origin: project.districtOrigin)
+            self.drawRoadCells(branch)
             self.drawDistrictMarker(for: project)
         }
     }
@@ -295,7 +329,14 @@ final class GameScene: SKScene {
             self.world.run(SKAction.sequence([
                 SKAction.wait(forDuration: 2.0),
                 SKAction.run { [weak self] in
-                    self?.drawDistrictMarker(for: newProject)
+                    guard let self else { return }
+                    // F-21: подключаем переиспользованный квартал к магистрали.
+                    let branch = self.roadNetwork.connectDistrict(
+                        projectId: newProject.id,
+                        origin: newProject.districtOrigin
+                    )
+                    self.drawRoadCells(branch)
+                    self.drawDistrictMarker(for: newProject)
                 }
             ]))
         }
@@ -552,6 +593,38 @@ final class GameScene: SKScene {
             for child in node.children where child.name != DecayVisuals.overlayKey && child.name != "ruinNode" {
                 child.alpha = targetAlpha
             }
+        }
+    }
+
+    // MARK: - F-21: Road network rendering
+
+    /// Строит магистраль на основе текущего biomeReader. No-op если ридер не задан.
+    private func buildRoadNetwork() {
+        guard let br = biomeReader else { return }
+        roadNetwork.buildMainRoad(
+            cols: mapTilesPerSide,
+            rows: mapTilesPerSide,
+            biomeReader: br
+        )
+        drawRoadCells(roadNetwork.mainRoadCells)
+    }
+
+    /// Рисует список клеток как дорожные ромбы (тёмно-коричневый),
+    /// чуть ниже юнитов и выше биом-тайлмапа. Дубликаты по координате игнорируются.
+    private func drawRoadCells(_ cells: [GridPoint]) {
+        let roadFill   = NSColor(red: 0.29, green: 0.22, blue: 0.16, alpha: 1.0) // #4A3728
+        let roadStroke = NSColor(red: 0.20, green: 0.15, blue: 0.10, alpha: 1.0)
+
+        for cell in cells where roadNodes[cell] == nil {
+            let node = SKShapeNode(path: diamondPath())
+            node.fillColor = roadFill
+            node.strokeColor = roadStroke
+            node.lineWidth = 0.5
+            node.position = isoPosition(grid: cell)
+            // Чуть ниже юнитов: zPosition юнита = -(x+y); дорога = -(x+y) - 0.5.
+            node.zPosition = -CGFloat(cell.x + cell.y) - 0.5
+            world.addChild(node)
+            roadNodes[cell] = node
         }
     }
 

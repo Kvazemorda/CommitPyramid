@@ -22,6 +22,8 @@ final class CitizenManager {
 
     weak var engine: CityEngine?
     weak var scene: GameScene?
+    /// F-21: дорожная сеть для входа жителей с края карты и хождения по дорогам.
+    weak var roadNetwork: RoadNetwork?
 
     // Flat dict by UUID for O(1) lookup; project-index for grouping
     private var citizens: [UUID: Citizen] = [:]
@@ -53,6 +55,13 @@ final class CitizenManager {
     private func targetCount(for project: ProjectState) -> Int {
         if project.unitIds.isEmpty || project.decayLevel == 4 { return 0 }
         if project.stage < 2 { return 0 }
+        // F-21: жители появляются только если в квартале есть хотя бы один жилой юнит.
+        if let engine = engine {
+            let hasResidential = project.unitIds.contains { uid in
+                engine.state.units[uid.uuidString]?.kind.category == .residential
+            }
+            if !hasResidential { return 0 }
+        }
         let formula = min(20, project.stage * 2 + project.unitIds.count / 4)
         return max(3, formula)
     }
@@ -139,8 +148,10 @@ final class CitizenManager {
 
     private func spawnCitizen(in project: ProjectState) {
         guard let scene = scene else { return }
-        let waypts = waypoints(for: project)
-        guard let firstWp = waypts.randomElement() else { return }
+        // F-21: житель появляется на въезде в город (или на ближайшем waypoint в legacy-режиме).
+        let startCell: GridPoint = roadNetwork?.entryPoint
+            ?? waypoints(for: project).randomElement()
+            ?? project.districtOrigin
 
         let seed = nextCitizenSeed
         nextCitizenSeed += 1
@@ -148,18 +159,47 @@ final class CitizenManager {
         let node = CitizenSprites.makeCitizen(seed: seed)
         node.isUserInteractionEnabled = false
         node.alpha = 0
-        node.position = scene.isoPosition(grid: firstWp)
-        node.zPosition = -CGFloat(firstWp.x + firstWp.y) + 0.5
+        node.position = scene.isoPosition(grid: startCell)
+        node.zPosition = -CGFloat(startCell.x + startCell.y) + 0.5
 
         scene.worldNode.addChild(node)
 
         let citizenId = UUID()
-        let citizen = Citizen(id: citizenId, projectId: project.id, node: node, currentGrid: firstWp)
+        let citizen = Citizen(id: citizenId, projectId: project.id, node: node, currentGrid: startCell)
         citizens[citizenId] = citizen
         citizensByProject[project.id, default: []].insert(citizenId)
 
         node.run(SKAction.fadeIn(withDuration: 1.0))
-        walk(citizen: citizen)
+
+        // F-21: если есть дорога — сначала идём через магистраль к стыку с веткой квартала,
+        // затем продолжаем обычное блуждание в квартале.
+        if let rn = roadNetwork, let junction = rn.nearestMainRoadPoint(to: project.districtOrigin) {
+            walkAlongRoad(citizen: citizen, to: junction)
+        } else {
+            walk(citizen: citizen)
+        }
+    }
+
+    /// F-21: ведёт жителя по магистрали из текущей позиции к точке стыка `target`,
+    /// после чего передаёт управление обычному блужданию по кварталу.
+    private func walkAlongRoad(citizen: Citizen, to target: GridPoint) {
+        guard let scene = scene else { return }
+        let targetPos = scene.isoPosition(grid: target)
+        let distance = hypot(
+            targetPos.x - citizen.node.position.x,
+            targetPos.y - citizen.node.position.y
+        )
+        // Защита от деления на ноль (если стартовая клетка == target).
+        let duration = max(0.01, distance / speed)
+        let citizenId = citizen.id
+        citizen.node.run(SKAction.move(to: targetPos, duration: duration)) { [weak self] in
+            guard let self,
+                  let c = self.citizens[citizenId],
+                  !self.citizensLeaving.contains(citizenId) else { return }
+            c.currentGrid = target
+            c.node.zPosition = -CGFloat(target.x + target.y) + 0.5
+            self.walk(citizen: c)
+        }
     }
 
     // MARK: - Walk

@@ -32,6 +32,10 @@ final class CityEngine: ObservableObject {
     /// Задаётся из GameScene после построения BiomeMap (опционально; nil → uniform weights).
     var biomeReader: BiomeMapReader?
 
+    /// F-21 road-network: сеть дорог города (магистраль + ветки кварталов).
+    /// Задаётся из GameScene после buildRoadNetwork (опционально; nil → legacy-ring размещение).
+    weak var roadNetwork: RoadNetwork?
+
     private var periodicSnapshotTimer: DispatchSourceTimer?
 
     init(eventLog: EventLog = EventLog(), snapshotStore: SnapshotStore = SnapshotStore()) {
@@ -278,7 +282,8 @@ final class CityEngine: ObservableObject {
         )
         let position = unitPlanner.nextPosition(
             origin: project.districtOrigin,
-            taskIndex: project.taskCount
+            taskIndex: project.taskCount,
+            branchRoadCells: roadNetwork?.branchCells(for: project.id) ?? []
         )
 
         let unit = UnitState(

@@ -266,19 +266,56 @@ struct UnitPlanner {
         ErrorsLog.write("UnitPlanner: no candidates for category .\(category.rawValue) after minStage-filter — degrading to fallback")
     }
 
-    // MARK: - nextPosition (без изменений)
+    // MARK: - nextPosition (TASK F-21 road-aware, back-compat по умолчанию)
 
-    func nextPosition(origin: GridPoint, taskIndex: Int) -> GridPoint {
-        // Кольцевое размещение вокруг центра квартала: по 8 юнитов на кольце.
+    /// Размещение очередного юнита.
+    /// - При пустом `branchRoadCells` — кольцевое размещение вокруг origin (legacy-логика).
+    /// - При непустом `branchRoadCells` — здания вдоль ветки, чередуя стороны/глубину.
+    /// taskIndex == 1 (i == 0) всегда возвращает `origin` (стык квартала с веткой).
+    func nextPosition(origin: GridPoint, taskIndex: Int, branchRoadCells: [GridPoint] = []) -> GridPoint {
         let i = taskIndex - 1
         if i == 0 { return origin }
-        let ring = (i - 1) / 8 + 1
-        let slot = (i - 1) % 8
-        let offsets: [(Int, Int)] = [
-            (1, 0), (1, 1), (0, 1), (-1, 1),
-            (-1, 0), (-1, -1), (0, -1), (1, -1),
-        ]
-        let (dx, dy) = offsets[slot]
-        return GridPoint(x: origin.x + dx * ring, y: origin.y + dy * ring)
+
+        // Fallback: legacy-кольцевое размещение.
+        if branchRoadCells.isEmpty {
+            let ring = (i - 1) / 8 + 1
+            let slot = (i - 1) % 8
+            let offsets: [(Int, Int)] = [
+                (1, 0), (1, 1), (0, 1), (-1, 1),
+                (-1, 0), (-1, -1), (0, -1), (1, -1),
+            ]
+            let (dx, dy) = offsets[slot]
+            return GridPoint(x: origin.x + dx * ring, y: origin.y + dy * ring)
+        }
+
+        // Road-aware размещение: вдоль ветки, чередуя стороны и глубину.
+        let n = branchRoadCells.count
+        let roadIdx = (i - 1) % n
+        let side    = ((i - 1) / n) % 2 == 0 ? 1 : -1
+        let depth   = (i - 1) / n + 1
+        let roadCell = branchRoadCells[roadIdx]
+
+        // Определяем перпендикуляр по направлению первых двух клеток.
+        // 1 клетка в ветке → горизонтальная ветка по умолчанию.
+        let perp: (dx: Int, dy: Int)
+        if n >= 2 {
+            let a = branchRoadCells[0]
+            let b = branchRoadCells[1]
+            let isHorizontal = (a.y == b.y)
+            if isHorizontal {
+                // Горизонтальная ветка → перпендикуляр по Y.
+                perp = (0, 1)
+            } else {
+                // Вертикальная ветка → перпендикуляр по X.
+                perp = (1, 0)
+            }
+        } else {
+            perp = (0, 1)
+        }
+
+        return GridPoint(
+            x: roadCell.x + perp.dx * side * depth,
+            y: roadCell.y + perp.dy * side * depth
+        )
     }
 }
