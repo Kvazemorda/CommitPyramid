@@ -704,7 +704,7 @@ _Статус: [x] готов_
 
 ### Команды проверки (для DoD)
 
-- Компиляция: `swift build` из `/Users/ilahohlov/CityDeveloper`. Ожидание: 0 ошибок, 0 новых warning'ов.
+- Компиляция: `swift build` из `<repo-root>`. Ожидание: 0 ошибок, 0 новых warning'ов.
 - Тесты: `swift test --filter JournalFilterTests`. Ожидание: 10 пройдены.
 - Ручная проверка smoke `[AC:9]` (после TASK-024):
   1. Удалить `events.jsonl`, запустить приложение, закрыть 6 задач для одного проекта (хотя бы один stage-up).

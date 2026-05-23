@@ -1,5 +1,5 @@
 import XCTest
-@testable import CityDeveloper
+import CommitPyramid
 
 /// Compile-time / runtime инварианты каталога UnitKind (TASK-031).
 /// Страхуют от ручных опечаток в таблице на 51 юнит и нарушения AC edge cases.

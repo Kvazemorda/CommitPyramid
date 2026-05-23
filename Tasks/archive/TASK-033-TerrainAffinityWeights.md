@@ -237,7 +237,7 @@ enum TerrainAffinity {
 
 ```bash
 # После завершения TASK-031 и TASK-027:
-cd /Users/ilahohlov/CityDeveloper
+cd <repo-root>
 swift build 2>&1 | tail -20
 swift test --filter TerrainAffinityTests 2>&1 | tail -30
 ```

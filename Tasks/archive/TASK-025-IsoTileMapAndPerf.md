@@ -433,31 +433,31 @@ if let raw = ProcessInfo.processInfo.environment["CITY_BENCH_UNITS"], let n = In
 
 **Компиляция:**
 ```bash
-cd /Users/ilahohlov/CityDeveloper && swift build 2>&1 | tail -30
+cd <repo-root> && swift build 2>&1 | tail -30
 ```
 Ожидание: 0 ошибок, 0 новых warning'ов (существующие warning'и в `DecayEngine.swift`/др. — не наши).
 
 **Тесты (не должны сломаться):**
 ```bash
-cd /Users/ilahohlov/CityDeveloper && swift test 2>&1 | tail -20
+cd <repo-root> && swift test 2>&1 | tail -20
 ```
 Ожидание: все тесты `CityDeveloperTests` green.
 
 **Manual smoke 1 — визуал тайл-карты:**
 ```bash
-cd /Users/ilahohlov/CityDeveloper && CITY_START_EXPLORE=1 swift run CityDeveloper
+cd <repo-root> && CITY_START_EXPLORE=1 swift run CityDeveloper
 ```
 Ожидание: explore-режим, под городом — изометрическая сетка ромбов (видна на pan); pan/zoom работают (drag мышью, scroll), на 0.3× и 3.0× нет визуальных дыр; цвет фона за картой = цвет травы.
 
 **Manual smoke 2 — debug overlay:**
 ```bash
-cd /Users/ilahohlov/CityDeveloper && CITY_DEBUG_OVERLAY=1 CITY_START_EXPLORE=1 swift run CityDeveloper
+cd <repo-root> && CITY_DEBUG_OVERLAY=1 CITY_START_EXPLORE=1 swift run CityDeveloper
 ```
 Ожидание: в правом нижнем углу `SKView` — FPS / drawCount / nodeCount. ⌘⌥F скрывает/показывает.
 
 **Manual smoke 3 — bench + замер:**
 ```bash
-cd /Users/ilahohlov/CityDeveloper && CITY_BENCH_UNITS=500 CITY_DEBUG_OVERLAY=1 CITY_START_EXPLORE=1 swift run CityDeveloper
+cd <repo-root> && CITY_BENCH_UNITS=500 CITY_DEBUG_OVERLAY=1 CITY_START_EXPLORE=1 swift run CityDeveloper
 ```
 Ожидание: через ~0.5 сек спавнятся 500 юнитов в кружке радиуса 60 тайлов вокруг центра. Делать pan мышью 10 секунд. Записать средний FPS (visual из overlay), min FPS (наблюдательно), drawCalls, nodeCount. Сохранить скриншот overlay. Создать файл:
 ```

@@ -1,5 +1,5 @@
 import XCTest
-@testable import CityDeveloper
+import CommitPyramid
 
 /// Тесты backwards-compat: старый 12-юнитный state.json / events.jsonl
 /// должен без ошибок читаться новым 50-юнитным кодом (TASK-037).

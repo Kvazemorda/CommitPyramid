@@ -1,5 +1,5 @@
 import XCTest
-@testable import CityDeveloper
+import CommitPyramid
 
 final class JournalFilterTests: XCTestCase {
 

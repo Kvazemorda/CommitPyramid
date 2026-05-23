@@ -407,8 +407,8 @@ _Статус: [x] готов_
 
 ### Команды проверки (для DoD)
 
-- Документ открывается: `open -t /Users/ilahohlov/CityDeveloper/concept/UnitCatalog.md`
-  (или в VS Code: `code /Users/ilahohlov/CityDeveloper/concept/UnitCatalog.md`).
+- Документ открывается: `open -t <repo-root>/concept/UnitCatalog.md`
+  (или в VS Code: `code <repo-root>/concept/UnitCatalog.md`).
 - Markdown-превью корректное: визуально проверить таблицы (50 строк
   главной + 8 эволюции + 6 категорий).
 - Подсчёт строк таблицы (sanity): главная таблица должна давать ровно

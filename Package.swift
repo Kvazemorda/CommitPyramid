@@ -2,19 +2,19 @@
 import PackageDescription
 
 let package = Package(
-    name: "CityDeveloper",
+    name: "CommitPyramid",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "CityDeveloper",
+            name: "CommitPyramid",
             path: "Sources/CityDeveloper",
             resources: [
                 .process("Resources")
             ]
         ),
         .testTarget(
-            name: "CityDeveloperTests",
-            dependencies: ["CityDeveloper"],
+            name: "CommitPyramidTests",
+            dependencies: ["CommitPyramid"],
             path: "Tests/CityDeveloperTests"
         )
     ]

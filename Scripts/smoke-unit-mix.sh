@@ -53,7 +53,7 @@
 #
 # 2. Запуск 1:
 #    - Указать в AppSettings путь к $TMPDIR_SMOKE как dataDirectory и tasksJsonlPath.
-#    - Запустить приложение: open .build/debug/CityDeveloper.app (или через Xcode).
+#    - Запустить приложение: open .build/debug/CommitPyramid.app (или через Xcode).
 #    - Подождать ~5 сек (CityEngine replay завершится).
 #    - Сохранить state.json: cp "$DATA_DIR/state.json" "$TMPDIR_SMOKE/state-run1.json"
 #

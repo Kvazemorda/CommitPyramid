@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var worldMapProvider: WorldMapProvider!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Self.migrateLegacyApplicationSupport()
+
         let screen = NSScreen.main ?? NSScreen.screens.first!
 
         appSettings = AppSettings.load()
@@ -123,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkey.onPress = { [weak self] in self?.modeManager.toggle() }
         let ok = hotkey.register(keyCode: appSettings.hotkeyKeyCode, modifiers: appSettings.hotkeyModifiers)
         if !ok {
-            NSLog("CityDeveloper: global hotkey is unavailable (already taken?)")
+            NSLog("CommitPyramid: global hotkey is unavailable (already taken?)")
         }
 
         watcher = TasksJsonlWatcher(fileURL: appSettings.tasksJsonlPath, engine: engine)
@@ -172,7 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         decayEngine.start()
 
-        NSLog("CityDeveloper started. Data root: \(AppPaths.appSupport.path)")
+        NSLog("CommitPyramid started. Data root: \(AppPaths.appSupport.path)")
     }
 
     private func applySettings() {
@@ -289,6 +291,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduler.start()
         catchUpScheduler = scheduler
         decayEngine.start()
+    }
+
+    // MARK: - Legacy Migration
+
+    /// Один раз переносит ~/Library/Application Support/CityDeveloper → CommitPyramid
+    /// если старая папка существует и новая ещё не создана.
+    /// После переименования проекта в open-source версии.
+    private static func migrateLegacyApplicationSupport() {
+        let fm = FileManager.default
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let old = base.appendingPathComponent("CityDeveloper", isDirectory: true)
+        let new = base.appendingPathComponent("CommitPyramid", isDirectory: true)
+        guard fm.fileExists(atPath: old.path), !fm.fileExists(atPath: new.path) else { return }
+        do {
+            try fm.moveItem(at: old, to: new)
+            print("Migrated Application Support: CityDeveloper → CommitPyramid")
+        } catch {
+            ErrorsLog.write("Failed legacy migration: \(error)")
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

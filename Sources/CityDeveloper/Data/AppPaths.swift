@@ -4,7 +4,7 @@ enum AppPaths {
 
     static var appSupport: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let url = base.appendingPathComponent("CityDeveloper", isDirectory: true)
+        let url = base.appendingPathComponent("CommitPyramid", isDirectory: true)
         if !FileManager.default.fileExists(atPath: url.path) {
             try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }

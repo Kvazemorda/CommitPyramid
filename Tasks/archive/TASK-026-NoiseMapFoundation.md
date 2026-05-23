@@ -214,13 +214,13 @@ _Дата: 2026-05-22_
 
 ```sh
 # Сборка пакета (должен пройти без новых ошибок/варнингов).
-cd /Users/ilahohlov/CityDeveloper && swift build
+cd <repo-root> && swift build
 
 # Юнит-тесты целиком (детерминизм, нормализация, плавность, граничные значения).
-cd /Users/ilahohlov/CityDeveloper && swift test
+cd <repo-root> && swift test
 
 # Только новые тесты (быстрее в TDD-цикле).
-cd /Users/ilahohlov/CityDeveloper && swift test --filter NoiseFieldGeneratorTests
+cd <repo-root> && swift test --filter NoiseFieldGeneratorTests
 
 # Ручной smoke-тест детерминизма (после первой сборки):
 # 1. Удалить артефакты: предыдущий мир, но сохранить seed в UserDefaults.

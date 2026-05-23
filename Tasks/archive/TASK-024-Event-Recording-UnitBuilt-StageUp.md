@@ -524,7 +524,7 @@ _Статус: [x] готов_
 
 ### Команды проверки (для DoD)
 
-- Компиляция: `swift build` из `/Users/ilahohlov/CityDeveloper`. Ожидание: 0 ошибок, 0 новых warning'ов.
+- Компиляция: `swift build` из `<repo-root>`. Ожидание: 0 ошибок, 0 новых warning'ов.
 - Тесты: `swift test --filter CityEngineTests`. Ожидание: 4 пройдены.
 - Полный smoke `[AC:6,7]`:
   1. Удалить `events.jsonl` и `state.json` (см. `AppPaths`) для чистого старта.

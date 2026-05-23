@@ -8,7 +8,7 @@
 
 set -euo pipefail
 
-DATA="${HOME}/Library/Application Support/CityDeveloper"
+DATA="${HOME}/Library/Application Support/CommitPyramid"
 FILE="${DATA}/tasks.jsonl"
 
 mkdir -p "${DATA}"

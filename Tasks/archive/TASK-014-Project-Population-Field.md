@@ -296,7 +296,7 @@ Tick `CitizenManager` исполняется на main (через `SKAction.run
    - Никаких других изменений в файле.
 
 8. **Добавить test target в Package.swift + создать директорию тестов** `[AC:8]`
-   - Сначала создай директорию: `mkdir -p Tests/CityDeveloperTests` (из корня репозитория `/Users/ilahohlov/CityDeveloper`).
+   - Сначала создай директорию: `mkdir -p Tests/CityDeveloperTests` (из корня репозитория `<repo-root>`).
    - Файл: `Package.swift`
    - Что меняем: расширить массив `targets`:
      ```swift
@@ -377,7 +377,7 @@ Tick `CitizenManager` исполняется на main (через `SKAction.run
 
 ### Команды проверки (для DoD)
 
-- Компиляция: `swift build` (запускать из `/Users/ilahohlov/CityDeveloper`). Ожидание: 0 ошибок, без новых warning'ов.
+- Компиляция: `swift build` (запускать из `<repo-root>`). Ожидание: 0 ошибок, без новых warning'ов.
 - Тесты: `swift test --filter CitizenManagerTests`. Ожидание: 3 пройдены.
 - Ручная проверка (Quick smoke):
   1. Запустить приложение (`swift run CityDeveloper` или Xcode).

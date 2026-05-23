@@ -53,7 +53,7 @@
 
 set -euo pipefail
 
-DATA_DIR="${CITY_DATA_DIR:-${HOME}/Library/Application Support/CityDeveloper}"
+DATA_DIR="${CITY_DATA_DIR:-${HOME}/Library/Application Support/CommitPyramid}"
 TASKS_FILE="${DATA_DIR}/tasks.jsonl"
 STATE_FILE="${DATA_DIR}/state.json"
 OUT1="${DATA_DIR}/smoke-out1.json"

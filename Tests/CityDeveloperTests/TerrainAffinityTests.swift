@@ -1,5 +1,5 @@
 import XCTest
-@testable import CityDeveloper
+import CommitPyramid
 
 /// Тесты чистой функции `TerrainAffinity.weight(for:in:)` (TASK-033).
 ///

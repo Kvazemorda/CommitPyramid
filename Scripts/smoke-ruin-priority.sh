@@ -54,7 +54,7 @@
 #
 # 2. Запуск 1:
 #    - Указать в AppSettings (или через env) путь к $TMPDIR как dataDirectory и tasksJsonlPath.
-#    - Запустить приложение: open .build/debug/CityDeveloper (или через Xcode).
+#    - Запустить приложение: open .build/debug/CommitPyramid (или через Xcode).
 #    - Подождать ~5 сек (DecayEngine catch-up + размещение gamma).
 #    - Сохранить state.json: cp "$DATA_DIR/state.json" "$TMPDIR/state-run1.json"
 #
