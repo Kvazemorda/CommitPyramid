@@ -36,8 +36,8 @@ struct BiomeClassifier {
     /// Минимальная связная площадь моря (клеток). Меньше — «лужа», сглаживается.
     static let minSeaArea: Int = 8
 
-    /// Минимальное число различных биомов (AC1).
-    static let minDiversity: Int = 7
+    /// Минимальное число различных биомов (AC1). Реки отключены — достаточно 6.
+    static let minDiversity: Int = 6
 
     /// Максимальная доля доминирующего биома (AC1). BUG-008: снижен с 0.75 до 0.40.
     static let maxDominantShare: Double = 0.40
@@ -73,9 +73,6 @@ struct BiomeClassifier {
 
         // 3. Разметить море flood-fill + сгладить «лужи»
         markSea(cells: &cells, W: W, H: H, seaThreshold: thresholds.seaLevel, world: world)
-
-        // 4. Проложить реки
-        carveRivers(cells: &cells, W: W, H: H, world: world, thresholds: thresholds)
 
         // 5. Проверить разнообразие
         try validateDiversity(cells: cells, total: W * H)

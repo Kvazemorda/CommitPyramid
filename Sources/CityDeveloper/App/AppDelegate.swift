@@ -214,11 +214,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let fm = FileManager.default
         let dataDir = appSettings.dataDirectory
 
-        // 2. Delete state files.
+        // 2. Delete state files (including ingestion-state so tasks replay from offset 0).
         let filesToDelete: [URL] = [
             dataDir.appendingPathComponent("events.jsonl"),
             dataDir.appendingPathComponent("state.json"),
             AppPaths.catchupState,
+            AppPaths.ingestionState,
             dataDir.appendingPathComponent("worldmap.json"),
         ]
         for url in filesToDelete {
@@ -292,6 +293,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduler.start()
         catchUpScheduler = scheduler
         decayEngine.start()
+
+        // 11. Restart tasks watcher against the new engine (ingestion-state deleted above → reads from offset 0).
+        watcher.stop()
+        watcher = TasksJsonlWatcher(fileURL: appSettings.tasksJsonlPath, engine: engine)
+        watcher.start()
     }
 
     // MARK: - Legacy Migration

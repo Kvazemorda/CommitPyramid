@@ -147,6 +147,7 @@ extension UnitKind {
         let any = BiomeKind.allCases
         let s1  = GridSize(width: 1, height: 1)
         let s2  = GridSize(width: 2, height: 2)
+        let s3  = GridSize(width: 3, height: 3)
 
         return [
             // ──── Residential (12) ────
@@ -197,7 +198,7 @@ extension UnitKind {
 
             .manor: UnitKindInfo(
                 label: "Усадьба", category: .residential,
-                terrain: [.meadow, .forest], size: s2, minStage: 4, large: true,
+                terrain: [.meadow, .forest], size: s3, minStage: 4, large: true,
                 evolvesTo: nil, evolutionThreshold: nil),
 
             .villa: UnitKindInfo(
@@ -207,7 +208,7 @@ extension UnitKind {
 
             .palace: UnitKindInfo(
                 label: "Дворец", category: .residential,
-                terrain: any, size: s2, minStage: 5, large: true,
+                terrain: any, size: s3, minStage: 5, large: true,
                 evolvesTo: nil, evolutionThreshold: nil),
 
             // ──── Infrastructure (8 + warehouse legacy) ────
@@ -390,12 +391,12 @@ extension UnitKind {
 
             .cathedral: UnitKindInfo(
                 label: "Собор", category: .religious,
-                terrain: any, size: s2, minStage: 4, large: true,
+                terrain: any, size: s3, minStage: 4, large: true,
                 evolvesTo: nil, evolutionThreshold: nil),
 
             .pyramid: UnitKindInfo(
                 label: "Пирамида", category: .religious,
-                terrain: [.desert, .stone], size: s2, minStage: 5, large: true,
+                terrain: [.desert, .stone], size: s3, minStage: 5, large: true,
                 evolvesTo: nil, evolutionThreshold: nil),
 
             // ──── Military (3) ────
@@ -406,7 +407,7 @@ extension UnitKind {
 
             .barracks: UnitKindInfo(
                 label: "Казармы", category: .military,
-                terrain: any, size: s2, minStage: 3, large: true,
+                terrain: any, size: s3, minStage: 3, large: true,
                 evolvesTo: nil, evolutionThreshold: nil),
 
             .shipyard: UnitKindInfo(

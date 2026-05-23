@@ -64,7 +64,6 @@ final class BiomeRenderer {
     func attach(to parent: SKNode) {
         attachedWorld = parent
         parent.addChild(tileMap)
-        buildBiomeLabels(on: parent)
     }
 
     /// Пересобирает рендер из новой карты — для TASK-030 «Сбросить карту».
@@ -76,9 +75,6 @@ final class BiomeRenderer {
             }
         }
         doPopulate(from: map)
-        if let parent = attachedWorld {
-            buildBiomeLabels(on: parent)
-        }
     }
 
     // MARK: - Построение тайлсета
@@ -147,54 +143,29 @@ final class BiomeRenderer {
                 let center = map.biome(atX: col, y: row)
                 biomeGrid[row * cols + col] = center
 
-                // Прочитать 4 соседа; за краем — тот же биом (clamp)
-                let north = map.biome(atX: col,     y: row - 1)
-                let south = map.biome(atX: col,     y: row + 1)
-                let east  = map.biome(atX: col + 1, y: row)
-                let west  = map.biome(atX: col - 1, y: row)
-
-                let neighbors: [(BiomeKind, Edge)] = [
-                    (north, .ne),
-                    (south, .sw),
-                    (east,  .se),
-                    (west,  .nw),
-                ]
-
-                let diffNeighbors = neighbors.filter { $0.0 != center }
-
-                if diffNeighbors.isEmpty {
-                    // Все соседи совпадают — чистый тайл
-                    tileMap.setTileGroup(pureGroups[center], forColumn: col, row: row)
-                    continue
-                }
-
-                // Выбрать доминирующего «чужого» соседа по приоритету
-                let dominant = diffNeighbors.max(by: { $0.0.transitionPriority < $1.0.transitionPriority })!
-                let (other, edge) = dominant
-
-                let key = TransitionKey(base: center, neighbor: other, edge: edge)
-                if let transGroup = transitionGroups[key] {
-                    tileMap.setTileGroup(transGroup, forColumn: col, row: row)
-                } else {
-                    // Пара не поддерживается — чистый тайл (overlay покроет стык при overlay-паре)
-                    tileMap.setTileGroup(pureGroups[center], forColumn: col, row: row)
-                }
+                tileMap.setTileGroup(pureGroups[center], forColumn: col, row: row)
             }
         }
     }
 
-    // MARK: - Debug-лейблы биомов (каждый тайл, с координатами)
+    // MARK: - Debug: название + HEX цвет на каждом 4-м тайле
 
-    private func buildBiomeLabels(on parent: SKNode) {
+    func buildColorLabels(on parent: SKNode) {
         let cols = tileMap.numberOfColumns
         let rows = tileMap.numberOfRows
-        for row in 0..<rows {
-            for col in 0..<cols {
+        let step = 4
+        for row in stride(from: 0, to: rows, by: step) {
+            for col in stride(from: 0, to: cols, by: step) {
                 let biome = biomeAt(col: col, row: row)
-                let label = SKLabelNode(text: "\(String(biome.asciiSymbol))\n\(col),\(row)")
+                let color = biome.fillColor
+                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                color.getRed(&r, green: &g, blue: &b, alpha: &a)
+                let hex = String(format: "#%02X%02X%02X",
+                                 Int(r * 255), Int(g * 255), Int(b * 255))
+                let label = SKLabelNode(text: "\(biome.label)\n\(hex)")
                 label.fontSize = 5
                 label.fontName = "Helvetica"
-                label.fontColor = .white.withAlphaComponent(0.85)
+                label.fontColor = .white
                 label.numberOfLines = 2
                 label.position = tileMap.centerOfTile(atColumn: col, row: row)
                 label.zPosition = -998

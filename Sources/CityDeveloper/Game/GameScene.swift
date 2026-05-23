@@ -302,11 +302,13 @@ final class GameScene: SKScene {
     }
 
     private func drawUnit(_ unit: UnitState, project: ProjectState, animated: Bool = true) {
-        let pos = isoPosition(grid: unit.position)
-        // Шаг 4 (TASK-019): используем категориальный tier-спрайт по stage квартала.
-        // makeStageNode устанавливает userData[unitIdKey/projectIdKey] внутри,
-        // поэтому дополнительная установка ниже — override (на случай если ключи различаются).
+        let basePos = isoPosition(grid: unit.position)
+        let span = CGFloat(unit.kind.size.width)
+        // Сдвиг центра спрайта к геометрическому центру NxN-блока в изометрии.
+        let pos = CGPoint(x: basePos.x, y: basePos.y + (span - 1) * tileHeight / 2)
+
         let node = UnitSprites.makeStageNode(unit: unit, stageOverride: project.stage)
+        node.setScale(span)
         node.position = pos
         node.zPosition = -CGFloat(unit.position.x + unit.position.y)
         node.userData = node.userData ?? NSMutableDictionary()
@@ -317,12 +319,11 @@ final class GameScene: SKScene {
         unitNodes[unit.id] = node
 
         if animated {
-            let appearScale: CGFloat = 0.4
-            node.setScale(appearScale)
+            node.setScale(span * 0.4)
             node.alpha = 0
             let group = SKAction.group([
                 SKAction.fadeIn(withDuration: 0.4),
-                SKAction.scale(to: 1.0, duration: 0.5),
+                SKAction.scale(to: span, duration: 0.5),
             ])
             group.timingMode = .easeOut
             node.run(group)
@@ -678,7 +679,7 @@ final class GameScene: SKScene {
         if event.hasPreciseScrollingDeltas {
             // Two-finger trackpad → PAN
             cameraNode.position.x -= event.scrollingDeltaX
-            cameraNode.position.y -= event.scrollingDeltaY
+            cameraNode.position.y += event.scrollingDeltaY
             clampCameraPosition()
         } else {
             // Mouse wheel → ZOOM
