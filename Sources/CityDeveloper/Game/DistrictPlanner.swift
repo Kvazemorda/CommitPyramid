@@ -4,9 +4,14 @@ struct DistrictPlanner {
 
     // MARK: - Spiral helper
 
+    /// Базовая точка спирали — около середины карты, рядом с магистралью (gy ≈ rows/2).
+    /// 256×256 карта → центр (128, 128). С шагом 14 кварталы укладываются плотно вдоль дороги,
+    /// branch от origin до магистрали — короткий (≤ 14 тайлов).
+    private static let spiralCenter = GridPoint(x: 128, y: 128)
+
     /// Возвращает GridPoint спирали для заданного индекса (без учёта биомов).
     private func spiralPoint(index: Int) -> GridPoint {
-        if index == 0 { return GridPoint(x: 0, y: 0) }
+        if index == 0 { return Self.spiralCenter }
 
         let layer = Int(((Double(index) + 1).squareRoot() + 1) / 2)
         let layerSize = 2 * layer
@@ -25,7 +30,10 @@ struct DistrictPlanner {
         }
 
         let spacing = 14
-        return GridPoint(x: x * spacing, y: y * spacing)
+        return GridPoint(
+            x: Self.spiralCenter.x + x * spacing,
+            y: Self.spiralCenter.y + y * spacing
+        )
     }
 
     // MARK: - BUG-009: allocateNextOrigin with biome awareness

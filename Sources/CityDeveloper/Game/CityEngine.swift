@@ -50,6 +50,21 @@ final class CityEngine: ObservableObject {
         self.periodicSnapshotTimer = timer
     }
 
+    /// Восстанавливает планы дорог для всех проектов из state — вызывается GameScene
+    /// после buildMainRoad и attach roadNetwork. Idempotent: повторный вызов ничего не ломает.
+    func syncRoadNetworkPlans() {
+        guard let rn = roadNetwork else { return }
+        for project in state.projects.values {
+            if rn.plannedCells(for: project.id).isEmpty {
+                rn.planDistrict(projectId: project.id, origin: project.districtOrigin)
+                // Считаем сколько road-юнитов проект уже построил (от старой логики или текущей).
+                let roadCount = project.unitIds.compactMap { state.units[$0.uuidString] }
+                    .filter { $0.kind == .road }.count
+                rn.restorePlan(projectId: project.id, origin: project.districtOrigin, builtCount: roadCount)
+            }
+        }
+    }
+
     func relocateEventLog(to newDirectory: URL) {
         eventLog.relocate(to: newDirectory)
     }
@@ -258,6 +273,10 @@ final class CityEngine: ObservableObject {
                 districtOrigin: origin,
                 unitIds: []
             )
+
+            // Запланировать дорогу квартала (branch + ring). Реальная постройка —
+            // покритично, по одной клетке за task: см. ниже выбор kind.
+            roadNetwork?.planDistrict(projectId: projectKey, origin: origin)
         }
 
         // Собираем per-category счётчики для проекта (O(N) по units; до ~100 юнитов — микросекунды).
@@ -268,23 +287,39 @@ final class CityEngine: ObservableObject {
         let infraCount       = projectUnits.filter { $0.kind.category == .infrastructure }.count
         let productionCount  = projectUnits.filter { $0.kind.category == .production }.count
         let socialCount      = projectUnits.filter { $0.kind.category == .social }.count
-        // TASK-035 F-16: передаём биом клетки квартала (nil → uniform, back-compat).
-        let districtBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
-        let kind = unitPlanner.nextUnitKind(
-            forTaskIndex: project.taskCount,
-            stage: project.stage,
-            biome: districtBiome,
-            residentialCount: residentialCount,
-            wellCount: wellCount,
-            infraCount: infraCount,
-            productionCount: productionCount,
-            socialCount: socialCount
-        )
-        let position = unitPlanner.nextPosition(
-            origin: project.districtOrigin,
-            taskIndex: project.taskCount,
-            branchRoadCells: roadNetwork?.branchCells(for: project.id) ?? []
-        )
+
+        // Дорога строится первой: пока в плане квартала есть непостроенные клетки —
+        // текущая задача даёт следующую road-клетку. Когда план исчерпан — обычная логика.
+        let kind: UnitKind
+        let position: GridPoint
+        if let rn = roadNetwork,
+           !rn.isPlanComplete(for: projectKey),
+           let roadCell = rn.consumeNextPlanCell(for: projectKey) {
+            kind = .road
+            position = roadCell
+        } else {
+            // TASK-035 F-16: передаём биом клетки квартала (nil → uniform, back-compat).
+            let districtBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
+            kind = unitPlanner.nextUnitKind(
+                forTaskIndex: project.taskCount,
+                stage: project.stage,
+                biome: districtBiome,
+                residentialCount: residentialCount,
+                wellCount: wellCount,
+                infraCount: infraCount,
+                productionCount: productionCount,
+                socialCount: socialCount
+            )
+            // buildingIndex считаем как «task - длина плана» (роудтаски не считаются зданиями).
+            let planLen = roadNetwork?.plannedCells(for: projectKey).count ?? 0
+            let buildingIndex = max(0, project.taskCount - planLen - 1)
+            position = unitPlanner.nextPosition(
+                origin: project.districtOrigin,
+                buildingIndex: buildingIndex,
+                roadCells: roadNetwork?.allCells ?? [],
+                unitSize: kind.size
+            )
+        }
 
         let unit = UnitState(
             id: UUID(),

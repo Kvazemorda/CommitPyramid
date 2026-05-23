@@ -111,12 +111,10 @@ final class GameScene: SKScene {
         // чтобы существующие кварталы (из snapshot) получили свои ветки.
         buildRoadNetwork()
         engine?.roadNetwork = roadNetwork
+        engine?.syncRoadNetworkPlans()
 
         if let engine {
             for project in engine.state.projects.values {
-                // Подключаем ветки для уже существующих кварталов (replay из snapshot).
-                let branch = roadNetwork.connectDistrict(projectId: project.id, origin: project.districtOrigin)
-                drawRoadCells(branch)
                 drawDistrictMarker(for: project)
             }
             for unit in engine.state.units.values {
@@ -215,12 +213,11 @@ final class GameScene: SKScene {
         // F-21: перестроить дорожную сеть после новой биом-карты.
         buildRoadNetwork()
         engine?.roadNetwork = roadNetwork
+        engine?.syncRoadNetworkPlans()
 
         // Draw any existing state (likely empty after reset, but future-safe).
         if let engine {
             for project in engine.state.projects.values {
-                let branch = roadNetwork.connectDistrict(projectId: project.id, origin: project.districtOrigin)
-                drawRoadCells(branch)
                 drawDistrictMarker(for: project)
             }
             for unit in engine.state.units.values {
@@ -259,9 +256,8 @@ final class GameScene: SKScene {
     func markDistrict(project: ProjectState) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.didAttach else { return }
-            // F-21: подключаем новый квартал к магистрали и отрисовываем ветку.
-            let branch = self.roadNetwork.connectDistrict(projectId: project.id, origin: project.districtOrigin)
-            self.drawRoadCells(branch)
+            // План дорог квартала уже сгенерирован в CityEngine.applyTaskCompleted
+            // на isNewProject; визуально дорога будет появляться задача за задачей через drawUnit.
             self.drawDistrictMarker(for: project)
         }
     }
@@ -338,12 +334,7 @@ final class GameScene: SKScene {
                 SKAction.wait(forDuration: 2.0),
                 SKAction.run { [weak self] in
                     guard let self else { return }
-                    // F-21: подключаем переиспользованный квартал к магистрали.
-                    let branch = self.roadNetwork.connectDistrict(
-                        projectId: newProject.id,
-                        origin: newProject.districtOrigin
-                    )
-                    self.drawRoadCells(branch)
+                    // План дорог переиспользуемого квартала сгенерирован CityEngine.
                     self.drawDistrictMarker(for: newProject)
                 }
             ]))

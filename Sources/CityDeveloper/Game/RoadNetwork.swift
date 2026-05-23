@@ -2,42 +2,51 @@ import Foundation
 
 // MARK: - RoadNetwork
 //
-// Простая сеть дорог поверх биом-карты: одна «магистраль» (mainRoad) вдоль
-// наиболее проходимого ряда + L-образные ответвления (branch) от каждого
-// квартала к ближайшей точке магистрали.
+// Дорожная сеть города:
+//   1. Магистраль (mainRoad) — синусоидальная диагональ SW→NE через всю карту, строится один раз.
+//   2. Для каждого квартала — план дорог (branch к магистрали + кольцо вокруг origin).
+//      План строится покритично, клетка за клеткой: каждая закрытая задача даёт одну клетку
+//      .road, пока план не исчерпан. Затем планировщик переходит на здания.
 //
-// Используется UnitPlanner для размещения зданий вдоль ответвлений и
-// CitizenManager для входа жителей в город с края карты.
+// allCells содержит ВСЁ что уже построено: магистраль + построенные клетки планов кварталов.
+// UnitPlanner проверяет allCells, чтобы здания не вставали на дорогу.
 
 final class RoadNetwork {
 
-    /// Клетки магистрали, упорядочены вдоль направления (слева-направо для горизонтального ряда).
+    // MARK: - Магистраль
+
+    /// Клетки магистрали, упорядочены вдоль направления (от SW к NE).
     private(set) var mainRoadCells: [GridPoint] = []
 
-    /// Все клетки сети (магистраль + ветки) для быстрой проверки занятости.
+    /// Все построенные дорожные клетки (магистраль + построенные клетки планов).
     private(set) var allCells: Set<GridPoint> = []
 
-    /// Ветки кварталов: districtBranches[projectId] = упорядоченные клетки
-    /// от districtOrigin в сторону магистрали (включая стык, без дублирования с allCells).
-    private(set) var districtBranches: [String: [GridPoint]] = [:]
+    // MARK: - План квартала (branch + кольцо)
+
+    /// Упорядоченный план дорог квартала: branch к магистрали, потом кольцо вокруг origin.
+    private var districtPlans: [String: [GridPoint]] = [:]
+    /// Сколько клеток плана уже построено.
+    private var districtPlanBuilt: [String: Int] = [:]
+
+    /// Полуразмер кольца: ring обходит origin по периметру квадрата (2h+1)×(2h+1).
+    /// halfSide=2 → кольцо 5×5, периметр 16 клеток.
+    static let ringHalfSide = 2
 
     // MARK: - Public API
 
-    /// Точка входа в город — первая клетка магистрали у края карты.
+    /// Точка входа в город — первая клетка магистрали у края карты (SW).
     var entryPoint: GridPoint? { mainRoadCells.first }
 
-    /// Строит магистраль вдоль ряда (row, y=const) с максимальным числом проходимых клеток.
-    /// Проходимая = не .sea и не .mountain.
-    /// Строит магистраль от визуального левого угла карты (0, rows-1)
-    /// до визуального правого угла (cols-1, 0) с синусоидальным извивом.
-    /// Путь НИКОГДА не пересекает море: при попадании на морскую клетку
-    /// алгоритм ищет ближайшую сухопутную клетку перпендикулярно диагонали.
+    /// Строит магистраль вдоль оси +gx (gx: 0 → cols-1) при gy ≈ rows/2.
+    /// В iso-проекции это диагональ экрана от SW (лево-низ) к NE (право-верх).
+    /// Извив — синусом по gy, перпендикулярно направлению движения.
+    /// Море остаётся в фиксированном углу (gy ≈ 0) — магистраль его не пересекает.
     func buildMainRoad(cols: Int, rows: Int, biomeReader: BiomeMapReader) {
-        let amplitude: Double = 14   // максимальное отклонение в тайлах
-        let waves:     Double = 3.0  // количество волн на всю длину пути
+        let midY      = Double(rows - 1) * 0.5
+        let amplitude: Double = 14    // отклонение в тайлах от центральной линии
+        let waves:     Double = 2.5
 
-        // Шагов достаточно, чтобы гарантировать непрерывность (каждый тайл покрыт).
-        let steps = (cols + rows) * 3
+        let steps = cols * 3
 
         var cells: [GridPoint] = []
         var lastAdded: GridPoint? = nil
@@ -45,34 +54,20 @@ final class RoadNetwork {
         for step in 0...steps {
             let t = Double(step) / Double(steps)
 
-            // Базовая диагональ (0,rows-1) → (cols-1,0)
-            let baseX = t * Double(cols - 1)
-            let baseY = (1.0 - t) * Double(rows - 1)
+            let gxF = t * Double(cols - 1)
+            let gyF = midY + amplitude * sin(t * waves * .pi * 2)
 
-            // Синусоидальный сдвиг перпендикулярно диагонали.
-            // Перпендикуляр к направлению (1,-1)/√2 — это (1,1)/√2,
-            // поэтому оба x и y смещаются одновременно.
-            let sine = amplitude * sin(t * waves * .pi * 2)
-            let perp = sine * 0.707   // ≈ sine / √2
+            let cx = max(0, min(cols - 1, Int(gxF.rounded())))
+            var cy = max(0, min(rows - 1, Int(gyF.rounded())))
 
-            var cx = max(0, min(cols - 1, Int((baseX + perp).rounded())))
-            var cy = max(0, min(rows - 1, Int((baseY + perp).rounded())))
-
-            // Если клетка — море, ищем ближайшую не-морскую
-            // в направлении, перпендикулярном диагонали.
+            // Море при gy≈0; магистраль идёт при mid_y, пересечений быть не должно.
+            // Защитный обход: если попали — двигаемся вверх по gy.
             if biomeReader.biome(atX: cx, y: cy) == .sea {
                 var found = false
-                outer: for delta in 1...25 {
-                    let candidates: [(Int, Int)] = [
-                        (cx - delta, cy - delta), (cx + delta, cy + delta),
-                        (cx - delta, cy),          (cx, cy - delta),
-                        (cx + delta, cy),          (cx, cy + delta),
-                    ]
-                    for (nx, ny) in candidates {
-                        if nx >= 0, nx < cols, ny >= 0, ny < rows,
-                           biomeReader.biome(atX: nx, y: ny) != .sea {
-                            cx = nx; cy = ny; found = true; break outer
-                        }
+                for delta in 1...20 {
+                    let ny = cy + delta
+                    if ny < rows, biomeReader.biome(atX: cx, y: ny) != .sea {
+                        cy = ny; found = true; break
                     }
                 }
                 if !found { continue }
@@ -88,7 +83,7 @@ final class RoadNetwork {
         mainRoadCells = cells
     }
 
-    /// Ищет ближайшую к точке клетку магистрали по Manhattan-дистанции.
+    /// Ближайшая клетка магистрали к точке (Manhattan).
     func nearestMainRoadPoint(to point: GridPoint) -> GridPoint? {
         guard !mainRoadCells.isEmpty else { return nil }
         var best: GridPoint? = nil
@@ -103,59 +98,136 @@ final class RoadNetwork {
         return best
     }
 
-    /// Подключает квартал к магистрали L-образной веткой.
-    /// Возвращает свежедобавленные клетки ветки (без уже существующих в allCells).
-    /// Алгоритм: от origin сначала меняем Y до nearest.y, затем X до nearest.x.
+    // MARK: - План квартала
+
+    /// Генерирует план дорог нового квартала: branch (origin→магистраль) + кольцо вокруг origin.
+    /// План записывается в districtPlans, но клетки allCells/visual НЕ добавляются — это происходит
+    /// при `consumeNextPlanCell` по мере закрытия задач.
     @discardableResult
-    func connectDistrict(projectId: String, origin: GridPoint) -> [GridPoint] {
-        guard let target = nearestMainRoadPoint(to: origin) else {
-            districtBranches[projectId] = []
-            return []
-        }
+    func planDistrict(projectId: String, origin: GridPoint) -> Int {
+        let branch = computeBranch(origin: origin)
+        let ring   = computeRing(origin: origin, halfSide: Self.ringHalfSide)
 
-        var branch: [GridPoint] = []
-        var added: [GridPoint] = []
-
-        // Шаг 1: вертикальный сегмент (origin.x фиксирован, y движется к target.y).
-        let stepY = target.y == origin.y ? 0 : (target.y > origin.y ? 1 : -1)
-        var y = origin.y
-        while y != target.y {
-            let p = GridPoint(x: origin.x, y: y)
-            branch.append(p)
-            if !allCells.contains(p) {
-                allCells.insert(p)
-                added.append(p)
+        // Без дублей внутри плана. Клетки магистрали — пропускаем (там и так дорога).
+        var seen = Set<GridPoint>()
+        var plan: [GridPoint] = []
+        for cell in branch + ring {
+            guard !seen.contains(cell) else { continue }
+            guard !allCells.contains(cell) else {
+                seen.insert(cell)
+                continue
             }
-            y += stepY
+            seen.insert(cell)
+            plan.append(cell)
         }
-
-        // Шаг 2: горизонтальный сегмент (y = target.y, x движется от origin.x к target.x).
-        let stepX = target.x == origin.x ? 0 : (target.x > origin.x ? 1 : -1)
-        var x = origin.x
-        while x != target.x {
-            let p = GridPoint(x: x, y: target.y)
-            branch.append(p)
-            if !allCells.contains(p) {
-                allCells.insert(p)
-                added.append(p)
-            }
-            x += stepX
-        }
-
-        // Точка стыка с магистралью (target) уже в allCells — branch её не дублирует.
-        districtBranches[projectId] = branch
-        return added
+        districtPlans[projectId] = plan
+        districtPlanBuilt[projectId] = 0
+        return plan.count
     }
 
-    /// Все клетки ветки квартала (для UnitPlanner и CitizenManager).
-    func branchCells(for projectId: String) -> [GridPoint] {
-        districtBranches[projectId] ?? []
+    /// Помечает следующую клетку плана как построенную и возвращает её. nil — план исчерпан.
+    func consumeNextPlanCell(for projectId: String) -> GridPoint? {
+        guard let plan = districtPlans[projectId] else { return nil }
+        let i = districtPlanBuilt[projectId] ?? 0
+        guard i < plan.count else { return nil }
+        let cell = plan[i]
+        districtPlanBuilt[projectId] = i + 1
+        allCells.insert(cell)
+        return cell
+    }
+
+    /// План построен полностью (все клетки использованы)? Также true если план не существует.
+    func isPlanComplete(for projectId: String) -> Bool {
+        guard let plan = districtPlans[projectId] else { return true }
+        return (districtPlanBuilt[projectId] ?? 0) >= plan.count
+    }
+
+    /// Уже построенные клетки плана квартала — для UnitPlanner.nextPosition.
+    func builtRoadCells(for projectId: String) -> [GridPoint] {
+        guard let plan = districtPlans[projectId] else { return [] }
+        let n = districtPlanBuilt[projectId] ?? 0
+        return Array(plan.prefix(n))
+    }
+
+    /// Возвращает все клетки плана (для replay-восстановления).
+    func plannedCells(for projectId: String) -> [GridPoint] {
+        districtPlans[projectId] ?? []
+    }
+
+    /// Прямой инжект состояния плана (для snapshot/replay).
+    /// Используется, когда мы хотим восстановить квартал, у которого уже было построено N клеток.
+    func restorePlan(projectId: String, origin: GridPoint, builtCount: Int) {
+        if districtPlans[projectId] == nil {
+            planDistrict(projectId: projectId, origin: origin)
+        }
+        guard let plan = districtPlans[projectId] else { return }
+        let n = min(builtCount, plan.count)
+        districtPlanBuilt[projectId] = n
+        for i in 0..<n { allCells.insert(plan[i]) }
     }
 
     /// Сбрасывает всё (для regenerate карты).
     func reset() {
         mainRoadCells.removeAll()
         allCells.removeAll()
-        districtBranches.removeAll()
+        districtPlans.removeAll()
+        districtPlanBuilt.removeAll()
+    }
+
+    // MARK: - Private
+
+    /// L-образный branch от origin до ближайшей клетки магистрали.
+    /// Если магистрали ещё нет — пустой массив (квартал без подключения, edge case).
+    private func computeBranch(origin: GridPoint) -> [GridPoint] {
+        guard let target = nearestMainRoadPoint(to: origin) else { return [] }
+
+        // Кольцо построится отдельно — branch ведёт от КРАЯ кольца к магистрали,
+        // чтобы не дублировать клетки на ребре периметра.
+        let h = Self.ringHalfSide
+        let ringEdge = GridPoint(
+            x: target.x > origin.x ? origin.x + h : (target.x < origin.x ? origin.x - h : origin.x),
+            y: target.y > origin.y ? origin.y + h : (target.y < origin.y ? origin.y - h : origin.y)
+        )
+
+        var branch: [GridPoint] = []
+        var seen = Set<GridPoint>()
+
+        let stepY = target.y == ringEdge.y ? 0 : (target.y > ringEdge.y ? 1 : -1)
+        var y = ringEdge.y
+        while y != target.y {
+            y += stepY
+            let p = GridPoint(x: ringEdge.x, y: y)
+            if seen.insert(p).inserted { branch.append(p) }
+        }
+        let stepX = target.x == ringEdge.x ? 0 : (target.x > ringEdge.x ? 1 : -1)
+        var x = ringEdge.x
+        while x != target.x {
+            x += stepX
+            let p = GridPoint(x: x, y: target.y)
+            if seen.insert(p).inserted { branch.append(p) }
+        }
+        return branch
+    }
+
+    /// Клетки периметра квадрата 2h+1 вокруг origin, обход по часовой.
+    private func computeRing(origin: GridPoint, halfSide h: Int) -> [GridPoint] {
+        var ring: [GridPoint] = []
+        // Низ (y = origin.y - h), слева направо
+        for x in (origin.x - h)...(origin.x + h) {
+            ring.append(GridPoint(x: x, y: origin.y - h))
+        }
+        // Правая (x = origin.x + h), снизу вверх (без угла)
+        for y in (origin.y - h + 1)...(origin.y + h) {
+            ring.append(GridPoint(x: origin.x + h, y: y))
+        }
+        // Верх (y = origin.y + h), справа налево (без угла)
+        for x in stride(from: origin.x + h - 1, through: origin.x - h, by: -1) {
+            ring.append(GridPoint(x: x, y: origin.y + h))
+        }
+        // Левая (x = origin.x - h), сверху вниз (без углов)
+        for y in stride(from: origin.y + h - 1, through: origin.y - h + 1, by: -1) {
+            ring.append(GridPoint(x: origin.x - h, y: y))
+        }
+        return ring
     }
 }

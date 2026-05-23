@@ -39,14 +39,27 @@ struct BiomeClassifier {
     /// Минимальное число различных биомов (AC1). Реки отключены — достаточно 6.
     static let minDiversity: Int = 6
 
-    /// Максимальная доля доминирующего биома. Поднят до 0.65 — море занимает правый нижний угол.
-    static let maxDominantShare: Double = 0.65
+    /// Максимальная доля доминирующего биома. Море теперь — компактный блоб (<5% карты),
+    /// доминировать будут луга/леса. 0.55 запаса достаточно для типичного шум-сида.
+    static let maxDominantShare: Double = 0.55
 
     /// Минимальная доля каждого биома (BUG-008: цель ≥5%).
     static let minBiomeShare: Double = 0.05
 
     /// Число истоков рек. Берём топ-N пиков по высоте.
     static let riverSourceCount: Int = 5
+
+    /// Доля стороны карты, занимаемая радиусом морского блоба.
+    /// 0.15 при W=256 → r≈38 (≈3.8% площади). При W=16 → r≈2.4, ниже клампится до 3.
+    static let seaBlobRadiusFraction: Double = 0.15
+
+    /// Минимальный радиус морского блоба в тайлах — гарантирует ≥ minSeaArea клеток.
+    static let seaBlobMinRadius: Double = 3.0
+
+    /// Центр морского блоба в нормализованных grid-координатах (nx, ny ∈ [0,1]).
+    /// (0.92, 0.05) — у RIGHT-вершины, чуть внутрь от ребра BOTTOM→RIGHT (gy=0).
+    /// Это и есть визуальный «правый нижний угол» экрана для iso-проекции.
+    static let seaBlobCenter: (nx: Double, ny: Double) = (0.92, 0.05)
 
     // MARK: - Публичный API
 
@@ -157,38 +170,48 @@ struct BiomeClassifier {
     private static func classifyLand(world: NoiseMap, W: Int, thresholds t: Thresholds) -> [BiomeKind] {
         let n = W * W
         var cells = [BiomeKind](repeating: .meadow, count: n)
-        let wf = Float(W - 1)
+
+        // Центр и радиус морского блоба в grid-координатах.
+        // Шум humidity лёгкой «волной» искажает идеальный круг, чтобы кромка не выглядела циркулем.
+        let cxF = seaBlobCenter.nx * Double(W - 1)
+        let cyF = seaBlobCenter.ny * Double(W - 1)
+        // Радиус масштабируется со стороной карты; нижний клипп держит минимум 3 тайла.
+        let r0  = max(seaBlobMinRadius, Double(W) * seaBlobRadiusFraction)
+        // Лёгкая модуляция кромки — не больше 15% радиуса, чтобы блоб никогда не «съёживался» в ноль.
+        let edgeNoiseScale = r0 * 0.30
 
         for i in 0 ..< n {
+            let gx = Double(i % W)
+            let gy = Double(i / W)
+            let dx = gx - cxF
+            let dy = gy - cyF
+            let edgeNoise = Double(world.humidity[i] - 0.5) * edgeNoiseScale
+            let r = r0 + edgeNoise
+            if dx * dx + dy * dy <= r * r {
+                cells[i] = .sea
+                continue
+            }
+
             let h    = world.height[i]
             let temp = world.temperature[i]
             let hum  = world.humidity[i]
 
-            // Географический градиент: море концентрируется в правом нижнем углу.
-            // nx+ny=0 при (0,0)=визуальный верх; nx+ny=2 при (cols-1,rows-1)=визуальный низ.
-            // Порог 1.0 = главная диагональ (левый↔правый визуальный угол).
-            // Множитель 0.35: мягкий, чтобы sea не превысило ~45%.
-            let nx = Float(i % W) / wf   // 0..1
-            let ny = Float(i / W) / wf   // 0..1
-            let grad = max(0, nx + ny - 1.0)   // 0 в верхней половине, >0 ниже диагонали
-            let effectiveSeaLevel = t.seaLevel + grad * 0.35
-
+            // Суша: классификация по высоте/температуре/влажности.
+            // Шум-вода (h < seaLevel) теперь НЕ становится морем — низины идут в meadow,
+            // чтобы море осталось ТОЛЬКО в фиксированном углу.
             if h >= t.mountainLevel {
                 cells[i] = .mountain
             } else if h >= t.stoneLevel {
                 cells[i] = .stone
-            } else if h < effectiveSeaLevel {
-                cells[i] = .sea
+            } else if temp < t.coldTemp {
+                cells[i] = .stone
+            } else if temp >= t.hotTemp && hum < t.dryHumidity {
+                cells[i] = .desert
+            } else if hum >= t.wetHumidity {
+                cells[i] = .forest
             } else {
-                if temp < t.coldTemp {
-                    cells[i] = .stone
-                } else if temp >= t.hotTemp && hum < t.dryHumidity {
-                    cells[i] = .desert
-                } else if hum >= t.wetHumidity {
-                    cells[i] = .forest
-                } else {
-                    cells[i] = .meadow
-                }
+                // h < seaLevel (бывшие низины) и нормальные климатические клетки.
+                cells[i] = .meadow
             }
         }
         return cells

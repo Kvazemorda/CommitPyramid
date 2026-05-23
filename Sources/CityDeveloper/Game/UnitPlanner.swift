@@ -90,13 +90,8 @@ struct UnitPlanner {
         socialCount: Int
     ) -> UnitKind {
 
-        // BUG-010: первый юнит квартала всегда road — фундамент.
-        // idx — 1-based taskCount; idx == 1 означает самый первый юнит нового проекта.
-        // Без этого правила road выпадал случайно по category-pattern,
-        // и кварталы могли вырасти «в чистом поле» без дороги.
-        if idx == 1 {
-            return .road
-        }
+        // Дорогами теперь занимается RoadNetwork: пока план кольца квартала не построен —
+        // CityEngine сам выбирает .road и не вызывает этот метод. Здесь — только здания.
 
         // ── Шаг 1: Pick category по слоту (F-07 pattern) ──
         let baseCategory = Self.categoryPattern[(idx - 1) % Self.categoryPattern.count]
@@ -266,56 +261,113 @@ struct UnitPlanner {
         ErrorsLog.write("UnitPlanner: no candidates for category .\(category.rawValue) after minStage-filter — degrading to fallback")
     }
 
-    // MARK: - nextPosition (TASK F-21 road-aware, back-compat по умолчанию)
+    // MARK: - nextPosition
 
-    /// Размещение очередного юнита.
-    /// - При пустом `branchRoadCells` — кольцевое размещение вокруг origin (legacy-логика).
-    /// - При непустом `branchRoadCells` — здания вдоль ветки, чередуя стороны/глубину.
-    /// taskIndex == 1 (i == 0) всегда возвращает `origin` (стык квартала с веткой).
-    func nextPosition(origin: GridPoint, taskIndex: Int, branchRoadCells: [GridPoint] = []) -> GridPoint {
-        let i = taskIndex - 1
-        if i == 0 { return origin }
+    /// Размещение очередного НЕ-дорожного юнита (здания).
+    ///
+    /// - Parameters:
+    ///   - origin: центр квартала.
+    ///   - buildingIndex: 0-based индекс здания внутри проекта (CityEngine считает: taskCount - planLength - 1).
+    ///   - roadCells: уже построенные клетки сети (магистраль + кольца кварталов).
+    ///                Используется для anchor-точек (стой рядом с дорогой) и overlap-проверки.
+    ///   - unitSize: footprint здания в тайлах (NxN).
+    ///
+    /// Алгоритм:
+    /// 1. Если roadCells пуст — legacy-кольцо вокруг origin.
+    /// 2. Иначе берём «близкие к origin» дорожные клетки (в окне ±halfSide),
+    ///    для каждой пробуем перпендикулярные смещения внутрь и наружу.
+    /// 3. Первая позиция, чей NxN footprint не задевает дорогу — возвращается.
+    func nextPosition(
+        origin: GridPoint,
+        buildingIndex: Int,
+        roadCells: Set<GridPoint>,
+        unitSize: GridSize = GridSize(width: 1, height: 1)
+    ) -> GridPoint {
+        let i = max(0, buildingIndex)
 
-        // Fallback: legacy-кольцевое размещение.
-        if branchRoadCells.isEmpty {
-            let ring = (i - 1) / 8 + 1
-            let slot = (i - 1) % 8
-            let offsets: [(Int, Int)] = [
-                (1, 0), (1, 1), (0, 1), (-1, 1),
-                (-1, 0), (-1, -1), (0, -1), (1, -1),
-            ]
-            let (dx, dy) = offsets[slot]
-            return GridPoint(x: origin.x + dx * ring, y: origin.y + dy * ring)
+        // Fallback: legacy-кольцо вокруг origin (если карты дорог нет).
+        if roadCells.isEmpty {
+            return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
         }
 
-        // Road-aware размещение: вдоль ветки, чередуя стороны и глубину.
-        let n = branchRoadCells.count
-        let roadIdx = (i - 1) % n
-        let side    = ((i - 1) / n) % 2 == 0 ? 1 : -1
-        let depth   = (i - 1) / n + 1
-        let roadCell = branchRoadCells[roadIdx]
+        // Только дороги «своего» квартала: внутри окна ±halfSide+1 от origin.
+        // Это branch + ring; магистраль (далеко) сюда не попадёт.
+        let halfSide = 4
+        let nearby = roadCells.filter {
+            abs($0.x - origin.x) <= halfSide && abs($0.y - origin.y) <= halfSide
+        }.sorted {
+            // Детерминированный порядок по (y, x).
+            if $0.y != $1.y { return $0.y < $1.y }
+            return $0.x < $1.x
+        }
 
-        // Определяем перпендикуляр по направлению первых двух клеток.
-        // 1 клетка в ветке → горизонтальная ветка по умолчанию.
-        let perp: (dx: Int, dy: Int)
-        if n >= 2 {
-            let a = branchRoadCells[0]
-            let b = branchRoadCells[1]
-            let isHorizontal = (a.y == b.y)
-            if isHorizontal {
-                // Горизонтальная ветка → перпендикуляр по Y.
-                perp = (0, 1)
-            } else {
-                // Вертикальная ветка → перпендикуляр по X.
-                perp = (1, 0)
+        if nearby.isEmpty {
+            return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
+        }
+
+        // Перебираем (depth, anchor, side). Возвращаем первую non-overlap позицию,
+        // которой ещё не достался юнит. Детерминируется по buildingIndex.
+        var attempts = 0
+        for depth in 1...6 {
+            for anchor in nearby {
+                let perp = perpendicularAxis(at: anchor, roads: roadCells)
+                for side in [1, -1] {
+                    let candidate = GridPoint(
+                        x: anchor.x + perp.dx * side * depth,
+                        y: anchor.y + perp.dy * side * depth
+                    )
+                    if footprintOverlapsRoad(at: candidate, size: unitSize, roads: roadCells) {
+                        continue
+                    }
+                    if attempts == i {
+                        return candidate
+                    }
+                    attempts += 1
+                }
             }
-        } else {
-            perp = (0, 1)
         }
 
-        return GridPoint(
-            x: roadCell.x + perp.dx * side * depth,
-            y: roadCell.y + perp.dy * side * depth
-        )
+        // Ни одна позиция не подошла — last-resort: легаси-кольцо за пределами ring'а.
+        return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
+    }
+
+    /// Перпендикулярная ось от road-клетки.
+    /// Смотрим 4 кардинальных соседа: если road-сосед слева/справа → дорога горизонтальная, perp = (0,±1).
+    /// Если сверху/снизу → дорога вертикальная, perp = (±1, 0).
+    private func perpendicularAxis(at cell: GridPoint, roads: Set<GridPoint>) -> (dx: Int, dy: Int) {
+        let hasLeft  = roads.contains(GridPoint(x: cell.x - 1, y: cell.y))
+        let hasRight = roads.contains(GridPoint(x: cell.x + 1, y: cell.y))
+        let hasDown  = roads.contains(GridPoint(x: cell.x, y: cell.y - 1))
+        let hasUp    = roads.contains(GridPoint(x: cell.x, y: cell.y + 1))
+        let horiz = (hasLeft ? 1 : 0) + (hasRight ? 1 : 0)
+        let vert  = (hasDown ? 1 : 0) + (hasUp ? 1 : 0)
+        if horiz >= vert {
+            return (0, 1)   // road горизонтальная → perp по Y
+        } else {
+            return (1, 0)   // road вертикальная → perp по X
+        }
+    }
+
+    /// Проверяет, перекрывается ли footprint NxN с дорогой.
+    private func footprintOverlapsRoad(at pos: GridPoint, size: GridSize, roads: Set<GridPoint>) -> Bool {
+        for dx in 0..<size.width {
+            for dy in 0..<size.height {
+                if roads.contains(GridPoint(x: pos.x + dx, y: pos.y + dy)) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func legacyRingPosition(origin: GridPoint, i: Int, unitSize: GridSize) -> GridPoint {
+        let ring = i / 8 + 1
+        let slot = i % 8
+        let offsets: [(Int, Int)] = [
+            (1, 0), (1, 1), (0, 1), (-1, 1),
+            (-1, 0), (-1, -1), (0, -1), (1, -1),
+        ]
+        let (dx, dy) = offsets[slot]
+        return GridPoint(x: origin.x + dx * ring, y: origin.y + dy * ring)
     }
 }
