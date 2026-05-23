@@ -251,12 +251,21 @@ final class CityEngine: ObservableObject {
                 origin = reusedOrigin
                 ruinsClearedFrom = oldProjectId
             } else {
-                // Fallback: стандартная спираль от центра (нет руин на карте).
-                // BUG-009: передаём biomeReader — allocateNextOrigin пропустит водные клетки.
-                let allocated = districtPlanner.allocateNextOrigin(
-                    currentIndex: state.nextDistrictIndex,
-                    biomeReader: biomeReader
-                )
+                // Fallback: размещение вдоль магистрали (петли «по очереди» сторонами).
+                // Если магистрали ещё нет — fall-through на спираль (back-compat).
+                let allocated: (origin: GridPoint, newIndex: Int)
+                if let mag = roadNetwork?.mainRoadCells, !mag.isEmpty {
+                    allocated = districtPlanner.allocateAlongMagistrale(
+                        currentIndex: state.nextDistrictIndex,
+                        mainRoadCells: mag,
+                        biomeReader: biomeReader
+                    )
+                } else {
+                    allocated = districtPlanner.allocateNextOrigin(
+                        currentIndex: state.nextDistrictIndex,
+                        biomeReader: biomeReader
+                    )
+                }
                 origin = allocated.origin
                 state.nextDistrictIndex = allocated.newIndex + 1
             }

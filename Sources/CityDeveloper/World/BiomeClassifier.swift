@@ -49,17 +49,18 @@ struct BiomeClassifier {
     /// Число истоков рек. Берём топ-N пиков по высоте.
     static let riverSourceCount: Int = 5
 
-    /// Доля стороны карты, занимаемая радиусом морского блоба.
-    /// 0.15 при W=256 → r≈38 (≈3.8% площади). При W=16 → r≈2.4, ниже клампится до 3.
-    static let seaBlobRadiusFraction: Double = 0.15
+    /// Базовый радиус морского блоба в долях стороны карты.
+    /// 0.22 при W=256 → r≈56 (≈9.5% площади до клампа углами). При W=16 → r≈3.5.
+    static let seaBlobRadiusFraction: Double = 0.22
 
     /// Минимальный радиус морского блоба в тайлах — гарантирует ≥ minSeaArea клеток.
-    static let seaBlobMinRadius: Double = 3.0
+    static let seaBlobMinRadius: Double = 4.0
 
     /// Центр морского блоба в нормализованных grid-координатах (nx, ny ∈ [0,1]).
-    /// (0.92, 0.05) — у RIGHT-вершины, чуть внутрь от ребра BOTTOM→RIGHT (gy=0).
-    /// Это и есть визуальный «правый нижний угол» экрана для iso-проекции.
-    static let seaBlobCenter: (nx: Double, ny: Double) = (0.92, 0.05)
+    /// (0.78, 0.06) — внутри ребра BOTTOM→RIGHT, ближе к середине; визуальный
+    /// «нижний угол» iso-ромба. Чуть отодвинут от RIGHT-вершины, чтобы блоб
+    /// растекался по углу, а не упирался в правую точку.
+    static let seaBlobCenter: (nx: Double, ny: Double) = (0.78, 0.06)
 
     // MARK: - Публичный API
 
@@ -172,24 +173,36 @@ struct BiomeClassifier {
         var cells = [BiomeKind](repeating: .meadow, count: n)
 
         // Центр и радиус морского блоба в grid-координатах.
-        // Шум humidity лёгкой «волной» искажает идеальный круг, чтобы кромка не выглядела циркулем.
+        // Кромка модулируется тремя синусами по углу (3+5+7 лепестков) — рваный,
+        // органический контур вместо идеального круга.
         let cxF = seaBlobCenter.nx * Double(W - 1)
         let cyF = seaBlobCenter.ny * Double(W - 1)
-        // Радиус масштабируется со стороной карты; нижний клипп держит минимум 3 тайла.
         let r0  = max(seaBlobMinRadius, Double(W) * seaBlobRadiusFraction)
-        // Лёгкая модуляция кромки — не больше 15% радиуса, чтобы блоб никогда не «съёживался» в ноль.
-        let edgeNoiseScale = r0 * 0.30
 
         for i in 0 ..< n {
             let gx = Double(i % W)
             let gy = Double(i / W)
             let dx = gx - cxF
             let dy = gy - cyF
-            let edgeNoise = Double(world.humidity[i] - 0.5) * edgeNoiseScale
-            let r = r0 + edgeNoise
-            if dx * dx + dy * dy <= r * r {
-                cells[i] = .sea
-                continue
+            let dist2 = dx * dx + dy * dy
+
+            // Быстрый отбой: точки заведомо за внешним контуром (r0 * 1.5).
+            let rOuter = r0 * 1.5
+            if dist2 > rOuter * rOuter {
+                // не море — fallthrough к сушевой логике ниже
+            } else {
+                let angle = atan2(dy, dx)
+                // Многочастотная модуляция радиуса по углу — лепестки разной частоты
+                // и фазы создают «рваный» контур.
+                let lobes = sin(angle * 3.0 + 0.7) * 0.22
+                          + sin(angle * 5.0 + 1.6) * 0.16
+                          + sin(angle * 7.0 + 2.4) * 0.10
+                let noiseTerm = Double(world.humidity[i] - 0.5) * 0.18
+                let r = r0 * (1.0 + lobes + noiseTerm)
+                if dist2 <= r * r {
+                    cells[i] = .sea
+                    continue
+                }
             }
 
             let h    = world.height[i]

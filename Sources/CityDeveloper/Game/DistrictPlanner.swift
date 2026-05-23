@@ -65,4 +65,51 @@ struct DistrictPlanner {
         // без дополнительного инкремента (карта целиком водная — edge case).
         return (origin, idx)
     }
+
+    // MARK: - Allocation along magistrale
+
+    /// Кладёт origin вдоль магистрали: чередует стороны (+/- offsetPerp перпендикулярно mag)
+    /// и движется с шагом stepAlongMag между кварталами. Это даёт компактные петли
+    /// (loopDepth=5 → origin на расстоянии ~3-4 клеток от mag, петля охватывает origin).
+    ///
+    /// - Parameters:
+    ///   - currentIndex: счётчик кварталов из CityState (state.nextDistrictIndex).
+    ///   - mainRoadCells: упорядоченные клетки магистрали из RoadNetwork.
+    ///   - biomeReader: для пропуска водных клеток.
+    /// - Returns: (origin, newIndex). Если магистраль пуста — fallback к spiralPoint.
+    func allocateAlongMagistrale(
+        currentIndex: Int,
+        mainRoadCells: [GridPoint],
+        biomeReader: BiomeMapReader?
+    ) -> (origin: GridPoint, newIndex: Int) {
+        guard !mainRoadCells.isEmpty else {
+            return allocateNextOrigin(currentIndex: currentIndex, biomeReader: biomeReader)
+        }
+
+        let stepAlongMag = 10   // дистанция между парами кварталов вдоль магистрали
+        let offsetPerp   = 4    // origin отстоит от mag на 4 клетки (loopDepth=5 покрывает)
+        let mag = mainRoadCells
+
+        let maxAttempts = currentIndex + 2_000
+        var idx = currentIndex
+        while idx < maxAttempts {
+            let pairIdx  = idx / 2
+            let sideSign = (idx % 2 == 0) ? 1 : -1   // чередуем стороны mag
+            let magIdx   = stepAlongMag * (pairIdx + 1)
+            guard magIdx < mag.count else {
+                // Магистраль кончилась — fallback на спираль.
+                return (spiralPoint(index: idx), idx)
+            }
+            let m = mag[magIdx]
+            let origin = GridPoint(x: m.x, y: m.y + sideSign * offsetPerp)
+
+            // Проверяем воду в самой origin и в окрестности петли.
+            if let reader = biomeReader, reader.biome(atX: origin.x, y: origin.y).isWater {
+                idx += 1
+                continue
+            }
+            return (origin, idx)
+        }
+        return (spiralPoint(index: currentIndex), idx)
+    }
 }

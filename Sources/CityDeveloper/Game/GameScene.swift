@@ -666,8 +666,12 @@ final class GameScene: SKScene {
     func isoPosition(grid: GridPoint) -> CGPoint {
         let gx = CGFloat(grid.x)
         let gy = CGFloat(grid.y)
+        // SKTileMapNode .isometric центрирует ромб на tileMap.position (.zero):
+        //   тайл (col,row) рисуется при (col-row)*tw/2, (col+row - (rows-1))*th/2.
+        // Подгоняем isoPosition под ту же систему: вычитаем (rows-1)*th/2.
+        let centerOffsetY = CGFloat(mapTilesPerSide - 1) * tileHeight / 2
         let x = (gx - gy) * (tileWidth / 2)
-        let y = (gx + gy) * (tileHeight / 2)
+        let y = (gx + gy) * (tileHeight / 2) - centerOffsetY
         return CGPoint(x: x, y: y)
     }
 
@@ -695,16 +699,17 @@ final class GameScene: SKScene {
         return CGRect(x: -w / 2, y: -h / 2, width: w, height: h)
     }
 
-    /// Зум-аут, при котором карта целиком помещается в текущее окно (5% запас по краям).
-    /// Чем меньше окно — тем больше scale нужен, чтобы вместить карту. AC-2.
-    /// Safe-fallback 13.0: 256 тайлов при tileWidth=64 на окне ~1280 px.
+    /// Зум-аут, при котором карта плотно ВПИСАНА в окно по короткой стороне —
+    /// фон за ромбом не виден, по длинной стороне карта может выходить за экран
+    /// (пан довешивает обзор). Используем min(fitX,fitY) (fill-mode), не max (fit-mode).
+    /// Safe-fallback 13.0: 256 тайлов при tileHeight=32 на окне ~800 px.
     private var maxZoomOut: CGFloat {
         guard let view = view, view.bounds.width > 0, view.bounds.height > 0 else {
             return 13.0
         }
         let fitX = worldBoundsInScene.width  / view.bounds.width
         let fitY = worldBoundsInScene.height / view.bounds.height
-        return max(fitX, fitY) * 1.05
+        return min(fitX, fitY)
     }
 
     /// Чистая функция: возвращает позицию камеры, ограниченную так,
@@ -794,12 +799,23 @@ final class GameScene: SKScene {
         clampCameraPosition()
     }
 
+    /// Один раз при первом валидном размере окна — отъезжаем на maxZoomOut,
+    /// чтобы пользователь сразу видел всю карту.
+    private var didInitialFit = false
+
     /// Пересчёт ограничений при изменении размера окна (resize / fullscreen). AC edge-case.
     override func didChangeSize(_ oldSize: CGSize) {
         super.didChangeSize(oldSize)
-        let s = min(maxZoomOut, max(minZoomIn, cameraNode.xScale))
-        cameraNode.xScale = s
-        cameraNode.yScale = s
+        if !didInitialFit, let v = view, v.bounds.width > 0, v.bounds.height > 0 {
+            cameraNode.xScale = maxZoomOut
+            cameraNode.yScale = maxZoomOut
+            cameraNode.position = .zero
+            didInitialFit = true
+        } else {
+            let s = min(maxZoomOut, max(minZoomIn, cameraNode.xScale))
+            cameraNode.xScale = s
+            cameraNode.yScale = s
+        }
         clampCameraPosition()
     }
 

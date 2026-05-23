@@ -21,16 +21,22 @@ final class RoadNetwork {
     /// Все построенные дорожные клетки (магистраль + построенные клетки планов).
     private(set) var allCells: Set<GridPoint> = []
 
-    // MARK: - План квартала (branch + кольцо)
+    // MARK: - План квартала (петля от магистрали)
 
-    /// Упорядоченный план дорог квартала: branch к магистрали, потом кольцо вокруг origin.
+    /// Упорядоченный план дорог квартала: U-петля, прикреплённая к магистрали.
     private var districtPlans: [String: [GridPoint]] = [:]
     /// Сколько клеток плана уже построено.
     private var districtPlanBuilt: [String: Int] = [:]
+    /// Origin квартала — нужен для extendDistrictPlan (вторая петля).
+    private var districtOrigins: [String: GridPoint] = [:]
 
-    /// Полуразмер кольца: ring обходит origin по периметру квадрата (2h+1)×(2h+1).
-    /// halfSide=2 → кольцо 5×5, периметр 16 клеток.
-    static let ringHalfSide = 2
+    /// Половина длины петли вдоль магистрали (loop = 2*halfW+1 в ширину).
+    /// halfW=4 → 9 клеток вдоль mag.
+    static let loopHalfWidth = 4
+    /// Глубина петли перпендикулярно магистрали (5 клеток от mag).
+    static let loopDepth = 5
+    /// Вместимость интерьера петли (для логики «добавить ещё петлю»).
+    static let loopInteriorCapacity = (loopHalfWidth * 2 - 1) * (loopDepth - 1)  // 7*4 = 28
 
     // MARK: - Public API
 
@@ -100,29 +106,52 @@ final class RoadNetwork {
 
     // MARK: - План квартала
 
-    /// Генерирует план дорог нового квартала: branch (origin→магистраль) + кольцо вокруг origin.
-    /// План записывается в districtPlans, но клетки allCells/visual НЕ добавляются — это происходит
-    /// при `consumeNextPlanCell` по мере закрытия задач.
+    /// Генерирует план дорог нового квартала: U-петля, прикреплённая к магистрали.
+    /// Origin находится внутри петли. Клетки добавляются в порядке «обхода» петли:
+    /// connector_L → перпендикулярная сторона L → дальняя сторона → перпендикулярная R → connector_R.
+    /// Клетки allCells/visual НЕ добавляются здесь — только при `consumeNextPlanCell`.
     @discardableResult
     func planDistrict(projectId: String, origin: GridPoint) -> Int {
-        let branch = computeBranch(origin: origin)
-        let ring   = computeRing(origin: origin, halfSide: Self.ringHalfSide)
+        districtOrigins[projectId] = origin
+        let loop = computeLoop(origin: origin)
 
-        // Без дублей внутри плана. Клетки магистрали — пропускаем (там и так дорога).
         var seen = Set<GridPoint>()
         var plan: [GridPoint] = []
-        for cell in branch + ring {
+        for cell in loop {
             guard !seen.contains(cell) else { continue }
-            guard !allCells.contains(cell) else {
-                seen.insert(cell)
-                continue
-            }
             seen.insert(cell)
+            guard !allCells.contains(cell) else { continue }   // мост к существующей дороге
             plan.append(cell)
         }
         districtPlans[projectId] = plan
         districtPlanBuilt[projectId] = 0
         return plan.count
+    }
+
+    /// Достраивает к плану ещё одну петлю — на противоположной стороне магистрали.
+    /// Используется, когда первая петля заполнена зданиями и нужно расширение.
+    /// Возвращает количество добавленных клеток.
+    @discardableResult
+    func extendDistrictPlan(projectId: String) -> Int {
+        guard let origin = districtOrigins[projectId],
+              let mag    = nearestMainRoadPoint(to: origin),
+              let existing = districtPlans[projectId] else { return 0 }
+
+        // Зеркальное origin относительно магистрали → петля растёт на другой стороне.
+        let outDy = origin.y >= mag.y ? 1 : -1
+        let mirrored = GridPoint(x: origin.x, y: mag.y - outDy * max(2, abs(origin.y - mag.y)))
+        let extraLoop = computeLoop(origin: mirrored)
+
+        var seen = Set(existing)
+        var added: [GridPoint] = []
+        for cell in extraLoop {
+            guard !seen.contains(cell) else { continue }
+            seen.insert(cell)
+            guard !allCells.contains(cell) else { continue }
+            added.append(cell)
+        }
+        districtPlans[projectId] = existing + added
+        return added.count
     }
 
     /// Помечает следующую клетку плана как построенную и возвращает её. nil — план исчерпан.
@@ -172,62 +201,73 @@ final class RoadNetwork {
         allCells.removeAll()
         districtPlans.removeAll()
         districtPlanBuilt.removeAll()
+        districtOrigins.removeAll()
     }
 
     // MARK: - Private
 
-    /// L-образный branch от origin до ближайшей клетки магистрали.
-    /// Если магистрали ещё нет — пустой массив (квартал без подключения, edge case).
-    private func computeBranch(origin: GridPoint) -> [GridPoint] {
-        guard let target = nearestMainRoadPoint(to: origin) else { return [] }
+    /// Генерирует U-петлю вокруг origin, прикреплённую к магистрали.
+    ///
+    /// Структура (для outDy=+1, mag ниже origin):
+    /// ```
+    ///   xMin            xMax
+    ///    +---  yFar  ---+         <- дальняя сторона (параллельна mag)
+    ///    |              |
+    ///    |   origin O   |         <- интерьер (зона зданий)
+    ///    |              |
+    ///    +---  yNear ---+         <- ближняя сторона (1 клетка от mag)
+    ///    .              .         <- connector_L / connector_R
+    ///   mag....mag....mag         <- магистраль
+    /// ```
+    /// Порядок обхода: connector_L → левая → дальняя → правая → connector_R.
+    /// Это даёт визуально плавную постройку от mag вокруг и обратно к mag.
+    private func computeLoop(origin: GridPoint) -> [GridPoint] {
+        guard let mag = nearestMainRoadPoint(to: origin) else { return [] }
 
-        // Кольцо построится отдельно — branch ведёт от КРАЯ кольца к магистрали,
-        // чтобы не дублировать клетки на ребре периметра.
-        let h = Self.ringHalfSide
-        let ringEdge = GridPoint(
-            x: target.x > origin.x ? origin.x + h : (target.x < origin.x ? origin.x - h : origin.x),
-            y: target.y > origin.y ? origin.y + h : (target.y < origin.y ? origin.y - h : origin.y)
-        )
+        let halfW = Self.loopHalfWidth
+        let depth = Self.loopDepth
+        let outDy = origin.y >= mag.y ? 1 : -1
+        let xMin  = origin.x - halfW
+        let xMax  = origin.x + halfW
+        let yNear = mag.y + outDy * 1
+        let yFar  = mag.y + outDy * depth
 
-        var branch: [GridPoint] = []
+        var ordered: [GridPoint] = []
         var seen = Set<GridPoint>()
+        func add(_ p: GridPoint) {
+            if seen.insert(p).inserted { ordered.append(p) }
+        }
+        func perpRange() -> StrideThrough<Int> {
+            stride(from: yNear, through: yFar, by: outDy)
+        }
 
-        let stepY = target.y == ringEdge.y ? 0 : (target.y > ringEdge.y ? 1 : -1)
-        var y = ringEdge.y
-        while y != target.y {
-            y += stepY
-            let p = GridPoint(x: ringEdge.x, y: y)
-            if seen.insert(p).inserted { branch.append(p) }
+        // 1. Левый connector: от nearCornerLeft вниз к mag (макс 12 клеток).
+        var p = GridPoint(x: xMin, y: yNear)
+        for _ in 0..<12 {
+            let down = GridPoint(x: p.x, y: p.y - outDy)
+            if allCells.contains(down) { break }
+            add(down)
+            p = down
         }
-        let stepX = target.x == ringEdge.x ? 0 : (target.x > ringEdge.x ? 1 : -1)
-        var x = ringEdge.x
-        while x != target.x {
-            x += stepX
-            let p = GridPoint(x: x, y: target.y)
-            if seen.insert(p).inserted { branch.append(p) }
-        }
-        return branch
-    }
 
-    /// Клетки периметра квадрата 2h+1 вокруг origin, обход по часовой.
-    private func computeRing(origin: GridPoint, halfSide h: Int) -> [GridPoint] {
-        var ring: [GridPoint] = []
-        // Низ (y = origin.y - h), слева направо
-        for x in (origin.x - h)...(origin.x + h) {
-            ring.append(GridPoint(x: x, y: origin.y - h))
+        // 2. Левая перпендикулярная сторона: yNear → yFar
+        for y in perpRange() { add(GridPoint(x: xMin, y: y)) }
+
+        // 3. Дальняя сторона (параллельна mag): xMin → xMax при y=yFar
+        for x in xMin...xMax { add(GridPoint(x: x, y: yFar)) }
+
+        // 4. Правая перпендикулярная сторона: yFar → yNear
+        for y in perpRange().reversed() { add(GridPoint(x: xMax, y: y)) }
+
+        // 5. Правый connector: от nearCornerRight вниз к mag
+        p = GridPoint(x: xMax, y: yNear)
+        for _ in 0..<12 {
+            let down = GridPoint(x: p.x, y: p.y - outDy)
+            if allCells.contains(down) { break }
+            add(down)
+            p = down
         }
-        // Правая (x = origin.x + h), снизу вверх (без угла)
-        for y in (origin.y - h + 1)...(origin.y + h) {
-            ring.append(GridPoint(x: origin.x + h, y: y))
-        }
-        // Верх (y = origin.y + h), справа налево (без угла)
-        for x in stride(from: origin.x + h - 1, through: origin.x - h, by: -1) {
-            ring.append(GridPoint(x: x, y: origin.y + h))
-        }
-        // Левая (x = origin.x - h), сверху вниз (без углов)
-        for y in stride(from: origin.y + h - 1, through: origin.y - h + 1, by: -1) {
-            ring.append(GridPoint(x: origin.x - h, y: y))
-        }
-        return ring
+
+        return ordered
     }
 }
