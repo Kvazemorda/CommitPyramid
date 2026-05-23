@@ -15,6 +15,12 @@ struct SidePanelView: View {
 
     @State private var showCustomPopover: Bool = false
 
+    // F-17: глобальный журнал — ввод задачи
+    @State private var draftJournalTitle: String = ""
+    @State private var draftJournalProject: String = ""
+    @State private var draftNewProjectName: String = ""
+    @State private var showJournalWarning: Bool = false
+
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "dd.MM.yyyy HH:mm"
@@ -124,6 +130,8 @@ struct SidePanelView: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 12) {
+                    inputSection
+                    Divider()
                     projectsSection
                     Divider()
                     journalSection
@@ -140,6 +148,98 @@ struct SidePanelView: View {
         .onChange(of: engine.state.projects.count) {
             checkSelectedProjectStillExists()
         }
+    }
+
+    // MARK: - F-17 Input Section (глобальный журнал)
+
+    /// Форма валидна если: title не пуст, project не пуст (или __new__ + newProjectName не пуст).
+    private var journalFormValid: Bool {
+        let t = draftJournalTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return false }
+        if draftJournalProject == "__new__" {
+            return !draftNewProjectName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return !draftJournalProject.isEmpty
+    }
+
+    private var inputSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("ДОБАВИТЬ ЗАДАЧУ")
+                .font(.system(size: 13, weight: .semibold))
+                .tracking(0.5)
+                .foregroundColor(.paletteInkDark)
+                .padding(.horizontal, 16)
+
+            TextField("Что сделал?", text: $draftJournalTitle)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color.paletteWarning.opacity(showJournalWarning ? 1 : 0), lineWidth: 1)
+                        .padding(.horizontal, 12)
+                )
+
+            HStack(spacing: 6) {
+                Picker("Проект", selection: $draftJournalProject) {
+                    Text("Выбрать проект…").tag("")
+                    ForEach(projectNames, id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                    Text("Создать новый…").tag("__new__")
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: draftJournalProject == "__new__" ? 130 : .infinity)
+
+                if draftJournalProject == "__new__" {
+                    TextField("Имя проекта", text: $draftNewProjectName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 120)
+                }
+
+                Spacer()
+
+                Button("Добавить") { trySubmitJournal() }
+                    .keyboardShortcut(.return, modifiers: [.command])
+                    .disabled(!journalFormValid)
+            }
+            .padding(.horizontal, 12)
+        }
+        .padding(.vertical, 8)
+        .overlay(
+            Rectangle()
+                .fill(Color.paletteInkDark.opacity(0.12))
+                .frame(height: 1),
+            alignment: .bottom
+        )
+    }
+
+    private func trySubmitJournal() {
+        let title = String(draftJournalTitle
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(255))
+        let project: String
+        if draftJournalProject == "__new__" {
+            project = draftNewProjectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            project = draftJournalProject
+        }
+        guard !title.isEmpty, !project.isEmpty else {
+            withAnimation { showJournalWarning = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                withAnimation { showJournalWarning = false }
+            }
+            return
+        }
+        engine.ingestTaskCompletion(
+            project: project,
+            title: title,
+            taskId: nil,
+            source: "journal",
+            ts: Date()
+        )
+        draftJournalTitle = ""
+        draftNewProjectName = ""
+        // Оставляем draftJournalProject для удобства быстрых записей
     }
 
     // MARK: - Projects Section

@@ -628,8 +628,8 @@ M (≤1д)
 
 ## ✅ Исполнение
 
-_Исполнитель: —_
-_Сложность: —_ (определит лид)
+_Исполнитель: sonnet_
+_Сложность: middle_ (определит лид)
 
 ### Definition of Done
 
@@ -652,7 +652,7 @@ _Сложность: —_ (определит лид)
 
 ## Статус
 
-`[x] ready`
+`[x] done`
 
 ## Метаданные
 - Создана PM: 2026-05-22
@@ -661,5 +661,7 @@ _Сложность: —_ (определит лид)
 - Lead-model: opus
 - Plan-review: approved-with-notes (3 ревизии применены: SpriteKit convert API, координаты через GeometryReader+focusable, Combine import + InputRequest struct)
 - Lead-trigger: opus (priority P1, multi-module UI+Game+App)
-- Завершена: —
+- Исполнитель: sonnet
+- Завершена: 2026-05-23
+- Code-review: approved (sonnet, inline)
 - Коммит: —

@@ -70,8 +70,8 @@ enum UnitSprites {
         ground.zPosition = -1
         container.addChild(ground)
 
-        // Building (categorical tier sprite)
-        let building = makeCategoricalBuilding(category: category, stage: stage)
+        // Building: kind-specific placeholder → PNG-first (TASK-032)
+        let building = makeKindBuilding(unit: unit, stage: stage)
         building.name = "building"
         building.position = .zero
         container.addChild(building)
@@ -99,17 +99,490 @@ enum UnitSprites {
 
     // MARK: - Ground color per category
 
+    /// Статическая таблица цветов тайла-земли по категории.
+    private static let groundColorByCategory: [UnitCategory: SKColor] = [
+        .residential:    Palette.sandLight,
+        .infrastructure: Palette.sandMid,
+        .production:     Palette.warmBrown.darkened(by: 0.05),   // выцветшее дерево + кирпич
+        .social:         Palette.parchment,
+        .religious:      Palette.parchment.lightened(by: 0.05),  // золотисто-светлый камень
+        .military:       Palette.smokeGrey.darkened(by: 0.05),   // тёмно-серый камень
+    ]
+
     private static func categoricalGroundColor(for category: UnitCategory) -> SKColor {
+        groundColorByCategory[category] ?? Palette.sandLight
+    }
+
+    // MARK: - PlaceholderSpec (TASK-032)
+
+    /// Декларативный дескриптор процедурного placeholder-силуэта для одного UnitKind.
+    private struct PlaceholderSpec {
+        enum RoofStyle { case pyramid, flat, none, dome }
+        enum DecorStyle { case none, window, chimney, columns, pediment, banner, smokeStack }
+
+        let footprint: CGSize
+        let baseHeight: CGFloat
+        let bodyPalette: (top: SKColor, side: SKColor)
+        let roof: RoofStyle
+        let roofPalette: SKColor
+        let decor: [DecorStyle]
+    }
+
+    // MARK: - Таблица placeholder-спецификаций (50 юнитов)
+
+    // swiftlint:disable:next function_body_length
+    private static let placeholderSpecs: [UnitKind: PlaceholderSpec] = {
+        // Shorthand helpers
+        func res(_ fp: CGSize, _ h: CGFloat, body: SKColor,
+                 roof: PlaceholderSpec.RoofStyle = .pyramid,
+                 roofColor: SKColor = Palette.ochre,
+                 decor: [PlaceholderSpec.DecorStyle] = []) -> PlaceholderSpec {
+            PlaceholderSpec(footprint: fp, baseHeight: h,
+                            bodyPalette: (top: body.lightened(by: 0.08), side: body),
+                            roof: roof, roofPalette: roofColor, decor: decor)
+        }
+
+        // MARK: Residential (12)
+        let dugout    = res(CGSize(width: 26, height: 14), 12,
+                            body: Palette.clay.darkened(by: 0.15), roof: .flat,
+                            roofColor: Palette.clay.darkened(by: 0.25))
+        let shack     = res(CGSize(width: 30, height: 16), 14,
+                            body: Palette.clay, roofColor: Palette.ochre)
+        let hut       = res(CGSize(width: 32, height: 16), 16,
+                            body: Palette.warmBrown.lightened(by: 0.05), roofColor: Palette.ochre)
+        let farmHouse = res(CGSize(width: 34, height: 18), 18,
+                            body: Palette.warmBrown, roofColor: Palette.clay,
+                            decor: [.window])
+        let house     = res(CGSize(width: 36, height: 18), 22,
+                            body: Palette.stone.lightened(by: 0.06), roofColor: Palette.clay,
+                            decor: [.window])
+        let twoStory  = res(CGSize(width: 34, height: 18), 28,
+                            body: Palette.stone, roofColor: Palette.clay,
+                            decor: [.window])
+        let stoneHse  = res(CGSize(width: 38, height: 20), 28,
+                            body: Palette.stone.darkened(by: 0.08), roofColor: Palette.smokeGrey,
+                            decor: [.window])
+        let townhouse = res(CGSize(width: 34, height: 18), 34,
+                            body: Palette.sandMid, roofColor: Palette.clay,
+                            decor: [.window])
+        let tenement  = res(CGSize(width: 38, height: 20), 38,
+                            body: Palette.sandMid.darkened(by: 0.05), roof: .flat,
+                            roofColor: Palette.stone.darkened(by: 0.15), decor: [.window])
+        let manor     = res(CGSize(width: 46, height: 24), 34,
+                            body: Palette.parchment.darkened(by: 0.08), roofColor: Palette.clay,
+                            decor: [.window, .columns])
+        let villaSpec = res(CGSize(width: 48, height: 24), 40,
+                            body: Palette.parchment, roofColor: Palette.clay.darkened(by: 0.05),
+                            decor: [.window, .columns])
+        let palace    = res(CGSize(width: 52, height: 28), 48,
+                            body: Palette.parchment.lightened(by: 0.04), roofColor: Palette.ochre,
+                            decor: [.window, .columns, .pediment])
+
+        // MARK: Infrastructure (9)
+        let wellSpec   = res(CGSize(width: 22, height: 12), 8,
+                             body: Palette.stone, roof: .none, roofColor: Palette.stone)
+        let roadSpec   = res(CGSize(width: 28, height: 14), 4,
+                             body: Palette.sandMid.darkened(by: 0.08), roof: .none,
+                             roofColor: .clear)
+        let gateSpec   = res(CGSize(width: 32, height: 16), 22,
+                             body: Palette.stone.darkened(by: 0.05), roof: .flat,
+                             roofColor: Palette.stone.darkened(by: 0.20))
+        let bridgeSpec = res(CGSize(width: 40, height: 16), 10,
+                             body: Palette.stone.lightened(by: 0.06), roof: .none,
+                             roofColor: .clear)
+        let cisternSpec = res(CGSize(width: 32, height: 18), 14,
+                              body: Palette.stone.darkened(by: 0.10), roof: .flat,
+                              roofColor: Palette.stone.darkened(by: 0.22))
+        let lighthouseSpec = res(CGSize(width: 20, height: 12), 30,
+                                 body: Palette.parchment.darkened(by: 0.05),
+                                 roof: .pyramid, roofColor: Palette.ochre)
+        let canalSpec  = res(CGSize(width: 44, height: 14), 6,
+                             body: Palette.skyNight.darkened(by: 0.05), roof: .none,
+                             roofColor: .clear)
+        let pierSpec   = res(CGSize(width: 36, height: 14), 8,
+                             body: Palette.warmBrown.darkened(by: 0.10), roof: .none,
+                             roofColor: .clear)
+        let warehouseSpec = res(CGSize(width: 44, height: 22), 16,
+                                body: Palette.sandLight, roof: .flat,
+                                roofColor: Palette.smokeGrey.darkened(by: 0.20))
+
+        // MARK: Production (12)
+        let farmSpec   = res(CGSize(width: 40, height: 20), 10,
+                             body: Palette.warmBrown.lightened(by: 0.08), roof: .pyramid,
+                             roofColor: Palette.ochre.darkened(by: 0.05))
+        let fishPier   = res(CGSize(width: 36, height: 16), 8,
+                             body: Palette.warmBrown.darkened(by: 0.12), roof: .flat,
+                             roofColor: Palette.warmBrown.darkened(by: 0.22))
+        let workshopSpec = res(CGSize(width: 38, height: 20), 18,
+                               body: Palette.ochre, roof: .pyramid,
+                               roofColor: Palette.smokeGrey, decor: [.chimney])
+        let rawSpec    = res(CGSize(width: 28, height: 14), 8,
+                             body: Palette.clay.darkened(by: 0.20), roof: .none,
+                             roofColor: .clear)
+        let forgeSpec  = res(CGSize(width: 36, height: 18), 20,
+                             body: Palette.warmBrown.darkened(by: 0.05), roof: .pyramid,
+                             roofColor: Palette.smokeGrey.darkened(by: 0.10), decor: [.chimney])
+        let potterySpec = res(CGSize(width: 34, height: 18), 16,
+                              body: Palette.clay.lightened(by: 0.08), roof: .pyramid,
+                              roofColor: Palette.ochre.darkened(by: 0.10))
+        let brewerySpec = res(CGSize(width: 36, height: 18), 18,
+                              body: Palette.ochre.darkened(by: 0.08), roof: .pyramid,
+                              roofColor: Palette.warmBrown, decor: [.chimney])
+        let sawmillSpec = res(CGSize(width: 40, height: 20), 14,
+                              body: Palette.warmBrown.lightened(by: 0.05), roof: .pyramid,
+                              roofColor: Palette.warmBrown.darkened(by: 0.25))
+        let quarrySpec  = res(CGSize(width: 36, height: 18), 14,
+                              body: Palette.stone.darkened(by: 0.15), roof: .flat,
+                              roofColor: Palette.stone.darkened(by: 0.28))
+        let mineSpec    = res(CGSize(width: 40, height: 20), 20,
+                              body: Palette.stone.darkened(by: 0.22), roof: .flat,
+                              roofColor: Palette.stone.darkened(by: 0.32), decor: [.smokeStack])
+        let lgWarehouse = res(CGSize(width: 52, height: 26), 24,
+                              body: Palette.sandLight.darkened(by: 0.05), roof: .flat,
+                              roofColor: Palette.stone.darkened(by: 0.18), decor: [.smokeStack])
+        let factorySpec = res(CGSize(width: 52, height: 28), 38,
+                              body: Palette.sandMid.darkened(by: 0.08), roof: .flat,
+                              roofColor: Palette.stone.darkened(by: 0.22),
+                              decor: [.chimney, .smokeStack])
+
+        // MARK: Social (12 including temple/obelisk legacy)
+        let tavernSpec  = res(CGSize(width: 34, height: 18), 14,
+                              body: Palette.warmBrown.lightened(by: 0.05), roof: .pyramid,
+                              roofColor: Palette.skyDusk.lightened(by: 0.08))
+        let marketSpec  = res(CGSize(width: 44, height: 22), 12,
+                              body: Palette.sandLight, roof: .pyramid,
+                              roofColor: Palette.skyDusk, decor: [.columns])
+        let plazaSpec   = res(CGSize(width: 48, height: 24), 8,
+                              body: Palette.parchment, roof: .flat,
+                              roofColor: Palette.parchment.darkened(by: 0.10))
+        let bathhouseSpec = res(CGSize(width: 40, height: 20), 18,
+                                body: Palette.parchment.darkened(by: 0.05), roof: .dome,
+                                roofColor: Palette.stone.lightened(by: 0.10))
+        let schoolSpec  = res(CGSize(width: 38, height: 20), 16,
+                              body: Palette.parchment.darkened(by: 0.08), roof: .pyramid,
+                              roofColor: Palette.clay.lightened(by: 0.05), decor: [.window])
+        let hospitalSpec = res(CGSize(width: 44, height: 22), 20,
+                               body: Palette.parchment, roof: .pyramid,
+                               roofColor: Palette.sandMid, decor: [.window])
+        let forumSpec   = res(CGSize(width: 50, height: 26), 24,
+                              body: Palette.parchment.darkened(by: 0.08), roof: .flat,
+                              roofColor: Palette.parchment.darkened(by: 0.12), decor: [.columns])
+        let librarySpec = res(CGSize(width: 42, height: 22), 22,
+                              body: Palette.parchment, roof: .pyramid,
+                              roofColor: Palette.ochre, decor: [.columns])
+        let aqueductSpec = res(CGSize(width: 56, height: 16), 22,
+                               body: Palette.parchment.darkened(by: 0.05), roof: .flat,
+                               roofColor: Palette.stone.darkened(by: 0.12), decor: [.columns])
+        let theaterSpec = res(CGSize(width: 52, height: 28), 28,
+                              body: Palette.parchment, roof: .pyramid,
+                              roofColor: Palette.skyDusk.lightened(by: 0.05), decor: [.columns])
+        let templeSpec  = res(CGSize(width: 44, height: 24), 28,
+                              body: Palette.parchment.darkened(by: 0.05), roof: .pyramid,
+                              roofColor: Palette.ochre, decor: [.columns, .pediment])
+        let obeliskSpec = res(CGSize(width: 16, height: 8), 36,
+                              body: Palette.sandMid, roof: .pyramid,
+                              roofColor: Palette.ochre)
+
+        // MARK: Religious (3 of 5 that exist in enum)
+        let chapelSpec   = res(CGSize(width: 28, height: 14), 16,
+                               body: Palette.parchment.darkened(by: 0.05), roof: .pyramid,
+                               roofColor: Palette.ochre.lightened(by: 0.05))
+        let cathedralSpec = res(CGSize(width: 50, height: 26), 44,
+                                body: Palette.parchment.lightened(by: 0.04), roof: .pyramid,
+                                roofColor: Palette.ochre.lightened(by: 0.08), decor: [.columns, .pediment])
+        let pyramidSpec  = PlaceholderSpec(
+            footprint: CGSize(width: 56, height: 30), baseHeight: 52,
+            bodyPalette: (top: Palette.sandLight.lightened(by: 0.06), side: Palette.sandLight),
+            roof: .pyramid, roofPalette: Palette.ochre.lightened(by: 0.06), decor: [])
+
+        // MARK: Military (3)
+        let watchtowerSpec = res(CGSize(width: 20, height: 12), 26,
+                                 body: Palette.stone.darkened(by: 0.10), roof: .pyramid,
+                                 roofColor: Palette.smokeGrey.darkened(by: 0.12))
+        let barracksSpec   = res(CGSize(width: 48, height: 24), 22,
+                                 body: Palette.stone.darkened(by: 0.15), roof: .flat,
+                                 roofColor: Palette.stone.darkened(by: 0.28))
+        let shipyardSpec   = res(CGSize(width: 52, height: 22), 16,
+                                 body: Palette.warmBrown.darkened(by: 0.15), roof: .flat,
+                                 roofColor: Palette.warmBrown.darkened(by: 0.30))
+
+        return [
+            // Residential
+            .dugout:        dugout,
+            .shack:         shack,
+            .hut:           hut,
+            .farmHouse:     farmHouse,
+            .house:         house,
+            .twoStoryHouse: twoStory,
+            .stoneHouse:    stoneHse,
+            .townhouse:     townhouse,
+            .tenement:      tenement,
+            .manor:         manor,
+            .villa:         villaSpec,
+            .palace:        palace,
+            // Infrastructure
+            .well:            wellSpec,
+            .road:            roadSpec,
+            .gate:            gateSpec,
+            .bridge:          bridgeSpec,
+            .cistern:         cisternSpec,
+            .lighthouse:      lighthouseSpec,
+            .irrigationCanal: canalSpec,
+            .pier:            pierSpec,
+            .warehouse:       warehouseSpec,
+            // Production
+            .farm:          farmSpec,
+            .fishingPier:   fishPier,
+            .workshop:      workshopSpec,
+            .raw:           rawSpec,
+            .forge:         forgeSpec,
+            .pottery:       potterySpec,
+            .brewery:       brewerySpec,
+            .sawmill:       sawmillSpec,
+            .quarry:        quarrySpec,
+            .mine:          mineSpec,
+            .largeWarehouse: lgWarehouse,
+            .factory:       factorySpec,
+            // Social
+            .tavern:    tavernSpec,
+            .market:    marketSpec,
+            .plaza:     plazaSpec,
+            .bathhouse: bathhouseSpec,
+            .school:    schoolSpec,
+            .hospital:  hospitalSpec,
+            .forum:     forumSpec,
+            .library:   librarySpec,
+            .aqueduct:  aqueductSpec,
+            .theater:   theaterSpec,
+            .temple:    templeSpec,
+            .obelisk:   obeliskSpec,
+            // Religious
+            .chapel:    chapelSpec,
+            .cathedral: cathedralSpec,
+            .pyramid:   pyramidSpec,
+            // Military
+            .watchtower: watchtowerSpec,
+            .barracks:   barracksSpec,
+            .shipyard:   shipyardSpec,
+        ]
+    }()
+
+    // MARK: - Universal placeholder builder
+
+    /// Строит процедурный силуэт по spec. Если large == true — высота +30% (AC #3).
+    private static func makePlaceholderBuilding(spec: PlaceholderSpec, large: Bool) -> SKNode {
+        let node = SKNode()
+        let h = large ? spec.baseHeight * 1.3 : spec.baseHeight
+        let fp = spec.footprint
+
+        // Body (cube)
+        if h > 0 {
+            let body = IsoBuilder.cube(
+                footprint: fp, height: h,
+                colors: .init(
+                    top:    spec.bodyPalette.top,
+                    left:   spec.bodyPalette.side,
+                    right:  spec.bodyPalette.side.darkened(by: 0.18),
+                    stroke: Palette.inkDark.withAlphaComponent(0.6)
+                )
+            )
+            node.addChild(body)
+
+            // Brick hatch
+            let rows = max(1, Int(h / 6))
+            node.addChild(IsoBuilder.brickHatch(
+                footprint: fp, height: h, rows: rows,
+                color: Palette.inkDark.withAlphaComponent(0.18)
+            ))
+        }
+
+        // Roof
+        switch spec.roof {
+        case .pyramid:
+            let peak = max(8, h * 0.35)
+            let roofNode = IsoBuilder.pyramidRoof(
+                footprint: fp, peak: peak,
+                leftColor: spec.roofPalette,
+                rightColor: spec.roofPalette.darkened(by: 0.18),
+                strokeColor: Palette.inkDark.withAlphaComponent(0.6)
+            )
+            roofNode.position = CGPoint(x: 0, y: h)
+            node.addChild(roofNode)
+        case .flat:
+            let topShade = IsoBuilder.groundTile(
+                width: fp.width, height: fp.height,
+                fillColor: spec.roofPalette,
+                strokeColor: Palette.inkDark
+            )
+            topShade.position = CGPoint(x: 0, y: h)
+            node.addChild(topShade)
+        case .dome:
+            let dome = SKShapeNode(circleOfRadius: fp.width * 0.38)
+            dome.fillColor = spec.roofPalette.lightened(by: 0.08)
+            dome.strokeColor = Palette.inkDark.withAlphaComponent(0.5)
+            dome.lineWidth = 0.8
+            dome.position = CGPoint(x: 0, y: h + fp.width * 0.18)
+            node.addChild(dome)
+        case .none:
+            break
+        }
+
+        // Decor
+        for style in spec.decor {
+            switch style {
+            case .window:
+                let win = SKShapeNode(rect: CGRect(x: -2.5, y: 0, width: 5, height: 5))
+                win.fillColor = Palette.skyNight.withAlphaComponent(0.80)
+                win.strokeColor = Palette.inkDark.withAlphaComponent(0.5)
+                win.lineWidth = 0.5
+                win.position = CGPoint(x: 6, y: h * 0.42)
+                node.addChild(win)
+            case .chimney:
+                let chimney = IsoBuilder.cube(
+                    footprint: CGSize(width: 5, height: 3), height: 8,
+                    colors: .init(
+                        top:    Palette.smokeGrey.darkened(by: 0.18),
+                        left:   Palette.smokeGrey.darkened(by: 0.28),
+                        right:  Palette.smokeGrey.darkened(by: 0.40),
+                        stroke: Palette.inkDark.withAlphaComponent(0.7)
+                    )
+                )
+                chimney.position = CGPoint(x: -fp.width * 0.18, y: h + 4)
+                node.addChild(chimney)
+            case .columns:
+                for dx in [-fp.width * 0.3, fp.width * 0.3] {
+                    let col = IsoBuilder.cube(
+                        footprint: CGSize(width: 3, height: 2), height: min(h * 0.7, 18),
+                        colors: .init(
+                            top:    Palette.parchment,
+                            left:   Palette.parchment.darkened(by: 0.08),
+                            right:  Palette.parchment.darkened(by: 0.18),
+                            stroke: Palette.inkDark.withAlphaComponent(0.5)
+                        )
+                    )
+                    col.position = CGPoint(x: dx, y: h * 0.1)
+                    node.addChild(col)
+                }
+            case .pediment:
+                let innerFp = CGSize(width: fp.width * 0.7, height: fp.height * 0.7)
+                let ped = IsoBuilder.pyramidRoof(
+                    footprint: innerFp, peak: 12,
+                    leftColor: Palette.ochre,
+                    rightColor: Palette.ochre.darkened(by: 0.20),
+                    strokeColor: Palette.inkDark.withAlphaComponent(0.6)
+                )
+                ped.position = CGPoint(x: 0, y: h)
+                node.addChild(ped)
+            case .smokeStack:
+                let stack = IsoBuilder.cube(
+                    footprint: CGSize(width: 5, height: 3), height: 12,
+                    colors: .init(
+                        top:    Palette.smokeGrey.darkened(by: 0.20),
+                        left:   Palette.smokeGrey.darkened(by: 0.30),
+                        right:  Palette.smokeGrey.darkened(by: 0.42),
+                        stroke: Palette.inkDark.withAlphaComponent(0.7)
+                    )
+                )
+                stack.position = CGPoint(x: fp.width * 0.20, y: h + 2)
+                node.addChild(stack)
+            case .banner:
+                let pole = SKShapeNode(rect: CGRect(x: -0.5, y: 0, width: 1, height: 10))
+                pole.fillColor = Palette.warmBrown
+                pole.strokeColor = .clear
+                pole.position = CGPoint(x: 0, y: h + 2)
+                node.addChild(pole)
+                let flag = SKShapeNode(rect: CGRect(x: 0, y: 0, width: 8, height: 5))
+                flag.fillColor = Palette.clay
+                flag.strokeColor = Palette.inkDark.withAlphaComponent(0.4)
+                flag.lineWidth = 0.5
+                flag.position = CGPoint(x: 0, y: h + 8)
+                node.addChild(flag)
+            case .none:
+                break
+            }
+        }
+
+        return node
+    }
+
+    // MARK: - Fallback categorical spec
+
+    /// Возвращает умолчальный spec по категории для kind'ов без явной строки в таблице.
+    /// Safety net: в нормальной работе не срабатывает, т.к. все 50 kind'ов покрыты.
+    private static func fallbackSpec(for category: UnitCategory, stage: Int) -> PlaceholderSpec {
+        let s = max(1, min(stage, 5))
+        let baseHeight: CGFloat = CGFloat(s) * 6 + 8
         switch category {
-        case .residential:    return Palette.sandLight
-        case .infrastructure: return Palette.sandMid
-        case .production:     return Palette.clay.darkened(by: 0.10)
-        case .social:         return Palette.parchment
-        // TODO TASK-032: финальные цвета для новых категорий
-        case .religious:      return Palette.parchment
-        case .military:       return Palette.sandMid
+        case .residential:
+            return PlaceholderSpec(
+                footprint: CGSize(width: 32, height: 16), baseHeight: baseHeight,
+                bodyPalette: (top: Palette.clay.lightened(by: 0.08), side: Palette.clay),
+                roof: .pyramid, roofPalette: Palette.ochre, decor: [])
+        case .infrastructure:
+            return PlaceholderSpec(
+                footprint: CGSize(width: 28, height: 14), baseHeight: baseHeight,
+                bodyPalette: (top: Palette.stone.lightened(by: 0.08), side: Palette.stone),
+                roof: .flat, roofPalette: Palette.stone.darkened(by: 0.18), decor: [])
+        case .production:
+            return PlaceholderSpec(
+                footprint: CGSize(width: 34, height: 18), baseHeight: baseHeight,
+                bodyPalette: (top: Palette.ochre.lightened(by: 0.05), side: Palette.ochre),
+                roof: .pyramid, roofPalette: Palette.smokeGrey, decor: [])
+        case .social:
+            return PlaceholderSpec(
+                footprint: CGSize(width: 36, height: 18), baseHeight: baseHeight,
+                bodyPalette: (top: Palette.parchment, side: Palette.parchment.darkened(by: 0.08)),
+                roof: .pyramid, roofPalette: Palette.skyDusk, decor: [])
+        case .religious:
+            return PlaceholderSpec(
+                footprint: CGSize(width: 30, height: 16), baseHeight: baseHeight,
+                bodyPalette: (top: Palette.parchment.lightened(by: 0.04), side: Palette.parchment),
+                roof: .pyramid, roofPalette: Palette.ochre.lightened(by: 0.05), decor: [])
+        case .military:
+            return PlaceholderSpec(
+                footprint: CGSize(width: 32, height: 16), baseHeight: baseHeight,
+                bodyPalette: (top: Palette.stone.darkened(by: 0.08), side: Palette.stone.darkened(by: 0.12)),
+                roof: .flat, roofPalette: Palette.stone.darkened(by: 0.28), decor: [])
         }
     }
+
+    // MARK: - Kind-level building dispatch (TASK-032)
+
+    /// Точка входа для рендеринга: PNG-first → placeholder по kind-spec → fallback по category.
+    /// effectiveStage = max(stage, kind.minStage) — защита от вызова ниже minStage.
+    static func makeKindBuilding(unit: UnitState, stage: Int) -> SKNode {
+        let kind = unit.kind
+        let effectiveStage = max(stage, kind.minStage)
+
+        // PNG-first: stage-suffix → без суффикса → placeholder
+        let rawVal = kind.rawValue
+        if let sprite = loadBuildingSprite(
+            named: "\(rawVal)_stage\(effectiveStage)",
+            targetWidth: 64, anchorY: 0.30) {
+            sprite.name = "building"
+            return sprite
+        }
+        if let sprite = loadBuildingSprite(named: rawVal, targetWidth: 64, anchorY: 0.30) {
+            sprite.name = "building"
+            return sprite
+        }
+
+        // Procedural placeholder
+        let spec = placeholderSpecs[kind] ?? fallbackSpec(for: kind.category, stage: effectiveStage)
+        return makePlaceholderBuilding(spec: spec, large: kind.large)
+    }
+
+    // MARK: - Debug coverage assertion
+
+    #if DEBUG
+    /// Проверяет, что все 50 UnitKind покрыты в placeholderSpecs.
+    /// Не вызывается в продакшне — только контракт-чек для ревью.
+    static func _debugAssertPlaceholderCoverage() {
+        for kind in UnitKind.allCases {
+            assert(placeholderSpecs[kind] != nil, "Missing placeholder spec for \(kind)")
+        }
+    }
+    #endif
 
     // MARK: - Жилые (residential): лачуга → деревянный → каменный → многоэтажный → вилла
 
