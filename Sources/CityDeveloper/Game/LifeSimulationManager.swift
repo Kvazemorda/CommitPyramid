@@ -100,6 +100,7 @@ final class LifeSimulationManager {
         case .temple:    anim = makeTempleAnimation()
         case .obelisk:   anim = makeObeliskAnimation()
         case .road:      return  // road исключён
+        default:         return  // TODO TASK-032/TASK-040: анимации для новых юнитов
         }
 
         anim.name = "lifeSimAnim"

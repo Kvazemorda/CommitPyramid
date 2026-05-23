@@ -11,7 +11,7 @@ enum InspectorPanel {
         projectLabel.fontColor = Palette.inkDark
         projectLabel.horizontalAlignmentMode = .left
 
-        let kindLabel = SKLabelNode(text: russianKind(unit.kind) + ", stage \(unit.tier)")
+        let kindLabel = SKLabelNode(text: unit.kind.label + ", stage \(unit.tier)")
         kindLabel.fontName = "Helvetica"
         kindLabel.fontSize = 10
         kindLabel.fontColor = Palette.inkDark.withAlphaComponent(0.6)
@@ -78,23 +78,6 @@ enum InspectorPanel {
         container.addChild(dateLabel)
 
         return container
-    }
-
-    private static func russianKind(_ kind: UnitKind) -> String {
-        switch kind {
-        case .shack:     return "Лачуга"
-        case .house:     return "Дом"
-        case .villa:     return "Вилла"
-        case .well:      return "Колодец"
-        case .road:      return "Дорога"
-        case .warehouse: return "Склад"
-        case .workshop:  return "Мастерская"
-        case .raw:       return "Сырьевая яма"
-        case .market:    return "Рынок"
-        case .forum:     return "Форум"
-        case .temple:    return "Храм"
-        case .obelisk:   return "Обелиск"
-        }
     }
 
     private static let dateFormatter: DateFormatter = {

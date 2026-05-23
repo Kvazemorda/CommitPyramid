@@ -93,6 +93,11 @@ struct UnitPlanner {
                 if stage >= 2 { return .market }
                 return .well // fallback при stage < 2 (stage-ограничение market соблюдено)
             }
+
+        // TODO TASK-035: добавить pickKind для .religious и .military одновременно
+        // с переписыванием планировщика; до тех пор планировщик не запрашивает эти категории.
+        case .religious, .military:
+            return .well  // fallback: новые категории пока не размещаются планировщиком
         }
     }
 

@@ -31,7 +31,7 @@ struct InspectorOverlayCard: View {
                 .font(.system(size: 10))
                 .foregroundColor(.paletteInkDark.opacity(0.6))
 
-            Text("\(Self.russianKind(unit.kind)), stage \(unit.tier)")
+            Text("\(unit.kind.label), stage \(unit.tier)")
                 .font(.system(size: 10))
                 .foregroundColor(.paletteInkDark.opacity(0.6))
 
@@ -52,23 +52,6 @@ struct InspectorOverlayCard: View {
         .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
         .padding(.trailing, 16)
         .frame(maxHeight: .infinity, alignment: .center)
-    }
-
-    private static func russianKind(_ kind: UnitKind) -> String {
-        switch kind {
-        case .shack:     return "Лачуга"
-        case .house:     return "Дом"
-        case .villa:     return "Вилла"
-        case .well:      return "Колодец"
-        case .road:      return "Дорога"
-        case .warehouse: return "Склад"
-        case .workshop:  return "Мастерская"
-        case .raw:       return "Сырьевая яма"
-        case .market:    return "Рынок"
-        case .forum:     return "Форум"
-        case .temple:    return "Храм"
-        case .obelisk:   return "Обелиск"
-        }
     }
 
     private static let dateFormatter: DateFormatter = {

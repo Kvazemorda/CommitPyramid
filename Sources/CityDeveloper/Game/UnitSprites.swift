@@ -91,6 +91,9 @@ enum UnitSprites {
         case .infrastructure: return makeInfrastructureStage(s)
         case .production:     return makeProductionStage(s)
         case .social:         return makeSocialStage(s)
+        // TODO TASK-032: placeholder для новых категорий; финальные спрайты — TASK-040
+        case .religious:      return makeSocialStage(s)   // временно social-спрайт
+        case .military:       return makeInfrastructureStage(s)  // временно infra-спрайт
         }
     }
 
@@ -102,6 +105,9 @@ enum UnitSprites {
         case .infrastructure: return Palette.sandMid
         case .production:     return Palette.clay.darkened(by: 0.10)
         case .social:         return Palette.parchment
+        // TODO TASK-032: финальные цвета для новых категорий
+        case .religious:      return Palette.parchment
+        case .military:       return Palette.sandMid
         }
     }
 
@@ -861,6 +867,9 @@ enum UnitSprites {
             container.addChild(makeTemple(tier: unit.tier))
         case .obelisk:
             container.addChild(makeObelisk(tier: unit.tier))
+        default:
+            // TODO TASK-032: placeholder-спрайт для новых 39 юнитов; финальные PNG — TASK-040
+            container.addChild(makePlaceholder(for: unit))
         }
 
         return container
@@ -873,10 +882,41 @@ enum UnitSprites {
         case .raw:           return Palette.clay.darkened(by: 0.15)        // вспаханное
         case .road:          return Palette.sandMid
         case .well:          return Palette.sandLight
-        case .market, .forum: return Palette.sandLight.darkened(by: 0.05)  // мощёная плошадь
+        case .market, .forum: return Palette.sandLight.darkened(by: 0.05)  // мощёная площадь
         case .temple, .obelisk: return Palette.parchment                   // светлый камень
         default:             return Palette.sandLight
         }
+    }
+
+    // MARK: - Placeholder для новых юнитов (TASK-032 заменит на финальный PNG-спрайт)
+
+    /// Однотонный куб с буквой инициала label-а.
+    /// Используется для всех новых юнитов F-16 до появления арт-ассетов.
+    private static func makePlaceholder(for unit: UnitState) -> SKNode {
+        let node = SKNode()
+        let fp = CGSize(width: 30, height: 16)
+        let h: CGFloat = 18
+        let body = IsoBuilder.cube(
+            footprint: fp, height: h,
+            colors: .init(
+                top:    Palette.sandLight,
+                left:   Palette.sandMid,
+                right:  Palette.sandMid.darkened(by: 0.18),
+                stroke: Palette.inkDark.withAlphaComponent(0.5)
+            )
+        )
+        node.addChild(body)
+        // Буква первого символа label-а для идентификации типа
+        let initial = String(unit.kind.label.prefix(1))
+        let letter = SKLabelNode(text: initial)
+        letter.fontName = "Helvetica"
+        letter.fontSize = 10
+        letter.fontColor = Palette.inkDark.withAlphaComponent(0.7)
+        letter.horizontalAlignmentMode = .center
+        letter.verticalAlignmentMode = .center
+        letter.position = CGPoint(x: 0, y: h * 0.5)
+        node.addChild(letter)
+        return node
     }
 
     // MARK: - Жилые
