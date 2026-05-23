@@ -671,7 +671,7 @@ _Сложность: —_ (определит лид)
 
 ## Статус
 
-`[x] ready`
+`[x] done`
 
 ## Метаданные
 - Создана PM: 2026-05-22
@@ -680,5 +680,7 @@ _Сложность: —_ (определит лид)
 - Lead-model: opus
 - Plan-review: approved-with-notes (3 minor revisions applied → resolved)
 - Lead-trigger: opus (priority P1, multi-module)
-- Завершена: —
-- Коммит: —
+- Исполнитель: sonnet (executor)
+- Завершена: 2026-05-23
+- Code-review: approved (sonnet, inline)
+- Коммит:

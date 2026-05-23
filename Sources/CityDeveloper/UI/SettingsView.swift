@@ -61,6 +61,26 @@ struct SettingsView: View {
                 .padding(8)
             }
 
+            GroupBox("Catch-up") {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Интервал, мин:")
+                            .frame(width: 100, alignment: .trailing)
+                        // Live binding: didSet in AppSettings clamps + logs,
+                        // CatchUpScheduler reschedules Timer via Combine sink.
+                        Stepper(value: $settings.catchUpIntervalMinutes, in: 3...60) {
+                            Text("\(settings.catchUpIntervalMinutes)")
+                                .monospacedDigit()
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                    }
+                    Text("Как часто проверять источники задач (notes, git). Меньше — быстрее реагирует, больше — экономит ресурсы.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+
             Spacer()
 
             HStack {

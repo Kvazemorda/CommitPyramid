@@ -17,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appSettings: AppSettings!
     private var settingsWindowController: SettingsWindowController!
     private var journalWindowController: JournalWindowController!
+    private var catchUpScheduler: CatchUpScheduler?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let screen = NSScreen.main ?? NSScreen.screens.first!
@@ -88,6 +89,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             modeManager.enterBehindMode()
         }
+
+        // TASK-025: bench-режим — спавн N синтетических юнитов для замера FPS.
+        // Юниты не попадают в engine.state. Задержка 0.5 сек гарантирует, что didMove(to:) уже отработал.
+        if let raw = ProcessInfo.processInfo.environment["CITY_BENCH_UNITS"],
+           let n = Int(raw), n > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                self?.scene.spawnBenchUnits(count: n)
+            }
+        }
+
         cityWindow.orderFront(nil)
 
         statusBarController = StatusBarController(modeManager: modeManager)
@@ -101,6 +112,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         watcher = TasksJsonlWatcher(fileURL: appSettings.tasksJsonlPath, engine: engine)
         watcher.start()
+
+        // F-20: catch-up scheduler (watcher infrastructure for future F-18/F-19).
+        // In smoke mode (CITY_SMOKE_CATCHUP=1) a mock source is registered.
+        let scheduler = CatchUpScheduler(engine: engine, appSettings: appSettings)
+        if ProcessInfo.processInfo.environment["CITY_SMOKE_CATCHUP"] == "1" {
+            let mock = MockEventSource(engine: engine)
+            scheduler.register(mock)
+        }
+        scheduler.start()
+        catchUpScheduler = scheduler
 
         settingsWindowController = SettingsWindowController()
         statusBarController.onSettingsRequested = { [weak self] in
@@ -143,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        catchUpScheduler?.stop()
         watcher?.stop()
         decayEngine?.stop()
         if let engine = engine, engine.eventsSinceSnapshot >= 1 {
