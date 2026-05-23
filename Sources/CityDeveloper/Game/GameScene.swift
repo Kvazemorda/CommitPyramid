@@ -380,7 +380,7 @@ final class GameScene: SKScene {
 
         // Получаем unit state по unitId из userData (нужен kind для makeKindBuilding).
         guard let unitId = node.userData?[UnitSprites.unitIdKey] as? UUID,
-              let unit = engine?.state.units[unitId] else { return }
+              let unit = engine?.state.units[unitId.uuidString] else { return }
 
         // Строим новый building с alpha=0 (TASK-032: kind-specific, а не категориальный).
         let newBuilding = UnitSprites.makeKindBuilding(unit: unit, stage: newStage)
@@ -416,7 +416,7 @@ final class GameScene: SKScene {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.didAttach,
                   let engine = self.engine,
-                  let unit = engine.state.units[unitId],
+                  let unit = engine.state.units[unitId.uuidString],
                   let node = self.unitNodes[unitId] else { return }
             self.swapEvolvedSprite(in: node, unit: unit)
         }
@@ -464,7 +464,7 @@ final class GameScene: SKScene {
         let level = project.decayLevel
 
         for unitId in project.unitIds {
-            guard let unit = engine.state.units[unitId] else { continue }
+            guard let unit = engine.state.units[unitId.uuidString] else { continue }
             applyDecay(level: level, toUnit: unit, animated: true)
         }
     }
@@ -731,7 +731,7 @@ final class GameScene: SKScene {
             while let n = current {
                 if n === inspector { return }
                 if let uid = n.userData?[Self.unitIdKey] as? UUID,
-                   let unit = engine?.state.units[uid],
+                   let unit = engine?.state.units[uid.uuidString],
                    let project = engine?.state.projects[unit.projectId] {
                     showInspector(near: location, unit: unit, project: project)
                     return
@@ -813,7 +813,7 @@ final class GameScene: SKScene {
     /// Показывает попап-инспектор для юнита по UUID.
     /// Если юнит не найден — no-op (без падения).
     func showInspector(forUnitId id: UUID) {
-        guard let unit = engine?.state.units[id],
+        guard let unit = engine?.state.units[id.uuidString],
               let project = engine?.state.projects[unit.projectId] else { return }
         let pos = unitNodes[id]?.position ?? isoPosition(grid: unit.position)
         showInspector(near: pos, unit: unit, project: project)

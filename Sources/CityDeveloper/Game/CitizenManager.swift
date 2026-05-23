@@ -113,7 +113,7 @@ final class CitizenManager {
 
     private func waypoints(for project: ProjectState) -> [GridPoint] {
         guard let engine = engine else { return [] }
-        let units = project.unitIds.compactMap { engine.state.units[$0] }
+        let units = project.unitIds.compactMap { engine.state.units[$0.uuidString] }
 
         // Priority 1: road tiles
         let roads = units.filter { $0.kind == .road }.map { $0.position }

@@ -1,5 +1,5 @@
 import XCTest
-import CommitPyramid
+@testable import CommitPyramid
 
 /// Compile-time / runtime инварианты каталога UnitKind (TASK-031).
 /// Страхуют от ручных опечаток в таблице на 51 юнит и нарушения AC edge cases.
@@ -18,7 +18,7 @@ final class UnitKindCatalogTests: XCTestCase {
     }
 
     /// Ровно 51 case (50 из F-16 + warehouse legacy).
-    func testCaseCount() {
+    func testUnitKindCaseCount() {
         XCTAssertEqual(
             UnitKind.allCases.count, 51,
             "Ожидаем 51 case: 50 из F-16 + 1 legacy warehouse"

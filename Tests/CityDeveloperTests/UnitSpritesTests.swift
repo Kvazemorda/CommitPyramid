@@ -1,5 +1,5 @@
 import XCTest
-import CommitPyramid
+@testable import CommitPyramid
 
 /// Тесты stage-tier визуального набора (TASK-036).
 /// Покрывает: makeKindStageBuilding, stage clamp, PNG fallback, negative cache.

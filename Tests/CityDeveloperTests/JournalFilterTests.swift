@@ -1,5 +1,5 @@
 import XCTest
-import CommitPyramid
+@testable import CommitPyramid
 
 final class JournalFilterTests: XCTestCase {
 
@@ -30,7 +30,7 @@ final class JournalFilterTests: XCTestCase {
             dateFrom: wideRange.from, dateTo: wideRange.to,
             kindFilter: .all
         )
-        XCTAssertEqual(out.count, 7)
+        XCTAssertEqual(out.count, GameEvent.Kind.allCases.count)
     }
 
     func testTaskCompletedPreset() {

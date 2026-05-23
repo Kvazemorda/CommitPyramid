@@ -1,5 +1,5 @@
 import XCTest
-import CommitPyramid
+@testable import CommitPyramid
 
 /// Тесты backwards-compat: старый 12-юнитный state.json / events.jsonl
 /// должен без ошибок читаться новым 50-юнитным кодом (TASK-037).
@@ -186,7 +186,7 @@ final class LegacyStateMigrationTests: XCTestCase {
             // Известное событие
             #"{"id":"\#(knownId)","ts":"2026-01-01T00:00:00Z","kind":"task_completed","project":"P1","title":"Known"}"#,
             // Неизвестное событие (из будущего / из ручного редактирования)
-            #"{"id":"\#(UUID().uuidString)","ts":"2026-01-01T01:00:00Z","kind":"unit_evolved","project":"P1","unitId":"\#(UUID().uuidString)"}"#,
+            #"{"id":"\#(UUID().uuidString)","ts":"2026-01-01T01:00:00Z","kind":"future_unknown_event","project":"P1"}"#,
             // Ещё одно известное
             #"{"id":"\#(UUID().uuidString)","ts":"2026-01-01T02:00:00Z","kind":"decay_tick","project":"P1"}"#,
         ]
@@ -196,7 +196,7 @@ final class LegacyStateMigrationTests: XCTestCase {
         let events = log.readAll()
 
         XCTAssertEqual(events.count, 2,
-                       "Только 2 известных события должны быть возвращены; unit_evolved — пропущен")
+                       "Только 2 известных события должны быть возвращены; future_unknown_event — пропущен")
         XCTAssertEqual(events[0].kind, .taskCompleted)
         XCTAssertEqual(events[1].kind, .decayTick)
     }

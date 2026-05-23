@@ -288,10 +288,14 @@ struct BiomeClassifier {
     }
 
     /// Прокладывает одну реку от source вниз по градиенту высоты до моря или края.
+    /// Ограничивает меандрирование: ширина русла (отклонение от стартовой колонки) ≤ maxRiverHalfWidth.
+    private static let maxRiverHalfWidth = 3  // max ±3 клетки от start X → ширина bbox ≤ 7
+
     private static func carveOnePath(from startIdx: Int, cells: inout [BiomeKind],
                                       W: Int, H: Int, world: NoiseMap) {
         var cur = startIdx
         var visited = Set<Int>()
+        let startX = startIdx % W
         // Максимальная длина пути — чтобы не зациклиться на плато
         let maxSteps = W + H
 
@@ -299,29 +303,20 @@ struct BiomeClassifier {
             guard !visited.contains(cur) else { break }
             visited.insert(cur)
 
-            if cells[cur] == .sea {
-                // Достигли моря — конец реки
+            if cells[cur] == .sea || cells[cur] == .river {
+                // Достигли моря или уже существующей реки — конец пути.
+                // Остановка на .river предотвращает слияние компонент и сохраняет отдельные русла.
                 break
             }
 
-            // Помечаем текущую клетку рекой (если не море и не гора)
+            // Помечаем текущую клетку рекой (если не гора)
             if cells[cur] != .mountain {
                 cells[cur] = .river
-                // Расширяем русло на 1 клетку в стороны (ширина 2–3 клетки суммарно)
-                let cx = cur % W
-                let cy = cur / W
-                for (dx, dy) in [(-1,0),(1,0),(0,-1),(0,1)] {
-                    let nx = cx + dx
-                    let ny = cy + dy
-                    guard nx >= 0, nx < W, ny >= 0, ny < H else { continue }
-                    let nIdx = ny * W + nx
-                    if cells[nIdx] != .sea && cells[nIdx] != .mountain && cells[nIdx] != .river {
-                        cells[nIdx] = .river
-                    }
-                }
             }
 
-            // Шаг вниз по самому крутому градиенту среди 4 соседей
+            // Шаг вниз по самому крутому градиенту среди 4 соседей.
+            // Кандидаты ограничены полосой ±maxRiverHalfWidth клеток от стартовой X-позиции,
+            // чтобы река не меандрировала в квадратную «лужу».
             let cx = cur % W
             let cy = cur / W
             var bestIdx: Int? = nil
@@ -331,6 +326,8 @@ struct BiomeClassifier {
                 let nx = cx + dx
                 let ny = cy + dy
                 guard nx >= 0, nx < W, ny >= 0, ny < H else { continue }
+                // Ограничение меандра
+                guard abs(nx - startX) <= maxRiverHalfWidth else { continue }
                 let nIdx = ny * W + nx
                 if world.height[nIdx] < bestH {
                     bestH = world.height[nIdx]
@@ -341,8 +338,7 @@ struct BiomeClassifier {
             if let next = bestIdx {
                 cur = next
             } else {
-                // Плато или локальный минимум без выхода в море
-                // Оставляем частичную реку; документируем: edge case TASK-027
+                // Плато или локальный минимум без выхода в море (или вышли за maxRiverHalfWidth)
                 break
             }
         }

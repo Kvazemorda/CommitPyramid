@@ -50,15 +50,15 @@ final class LifeSimulationManager {
         guard let engine = engine else { return }
         var currentIds = Set<UUID>()
 
-        for (id, unit) in engine.state.units {
+        for (_, unit) in engine.state.units {
             guard let project = engine.state.projects[unit.projectId] else { continue }
-            currentIds.insert(id)
-            let isAttached = attached[id] != nil
+            currentIds.insert(unit.id)
+            let isAttached = attached[unit.id] != nil
             let shouldAnim = shouldAnimate(unit: unit, project: project)
             if shouldAnim && !isAttached {
                 attachAnimation(to: unit)
             } else if !shouldAnim && isAttached {
-                detachAnimation(from: id)
+                detachAnimation(from: unit.id)
             }
         }
 

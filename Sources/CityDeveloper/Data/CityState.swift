@@ -437,7 +437,7 @@ struct ProjectState: Codable {
 
 struct CityState: Codable {
     var projects: [String: ProjectState] = [:]
-    var units: [UUID: UnitState] = [:]
+    var units: [String: UnitState] = [:]
     var nextDistrictIndex: Int = 0   // для детерминированного размещения
 
     var totalUnits: Int { units.count }

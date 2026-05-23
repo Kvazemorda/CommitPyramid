@@ -1,5 +1,5 @@
 import XCTest
-import CommitPyramid
+@testable import CommitPyramid
 
 final class BiomeClassifierTests: XCTestCase {
 

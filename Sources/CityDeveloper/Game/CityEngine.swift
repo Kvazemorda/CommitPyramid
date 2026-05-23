@@ -175,11 +175,11 @@ final class CityEngine: ObservableObject {
                 ErrorsLog.write("unit_evolved: не удалось распарсить title '\(event.title ?? "nil")' — пропускаем")
                 break
             }
-            guard state.units[uid] != nil else {
+            guard state.units[uid.uuidString] != nil else {
                 ErrorsLog.write("unit_evolved: unitId \(uid) не найден в state — пропускаем")
                 break
             }
-            state.units[uid]?.kind = toKind
+            state.units[uid.uuidString]?.kind = toKind
             if !silent { onUnitEvolved?(uid, fromKind, toKind, event.project) }
         }
     }
@@ -223,7 +223,7 @@ final class CityEngine: ObservableObject {
                 //      После этого state уже не содержит старого District —
                 //      snapshot, сделанный после, увидит финальное состояние.
                 for uid in ruin.unitIds {
-                    state.units.removeValue(forKey: uid)
+                    state.units.removeValue(forKey: uid.uuidString)
                 }
                 state.projects.removeValue(forKey: oldProjectId)
 
@@ -292,7 +292,7 @@ final class CityEngine: ObservableObject {
             taskTs: event.ts,
             taskSource: event.source
         )
-        state.units[unit.id] = unit
+        state.units[unit.id.uuidString] = unit
         project.unitIds.append(unit.id)
 
         let oldStage = project.stage
@@ -310,7 +310,7 @@ final class CityEngine: ObservableObject {
         // Включая только что добавленный юнит (project.unitIds уже содержит unit.id).
         if newStage > oldStage {
             for uid in project.unitIds {
-                state.units[uid]?.tier = newStage
+                state.units[uid.uuidString]?.tier = newStage
             }
         }
 
