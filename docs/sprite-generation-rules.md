@@ -2,7 +2,7 @@
 
 > English version. The Russian source is `concept/SpriteGenerationRules.md` and remains the working document for the maintainer.
 
-This document describes how to prepare raster sprites for GitCity so they fit into the
+This document describes how to prepare raster sprites for CommitPyramid so they fit into the
 isometric SpriteKit renderer without any in-code adjustments and maintain a consistent visual
 style throughout the city.
 
@@ -30,7 +30,7 @@ visible at maximum zoom — do not waste resolution on small inscriptions.
 
 - **Palette:** warm ochre, clay, sand, grey stone, weathered wood; blue only for water and rare
   accents (doors, windows — muted blue-grey).
-  Reference: `Sources/GitCity/Theme/Palette.swift`.
+  Reference: `Sources/CommitPyramid/Theme/Palette.swift`.
 - **Aged texture:** materials are worn, plaster shows cracks, wood is sun-bleached. **No**
   plastic surfaces or shine.
 - **Outline:** clean, colored (dark brown/charcoal, not pure black RGB(0,0,0)). Thickness 1–2 px
@@ -47,7 +47,7 @@ visible at maximum zoom — do not waste resolution on small inscriptions.
 In the SwiftPM package (`Package.swift` already includes `resources: [.process("Resources")]`):
 
 ```
-Sources/GitCity/Resources/
+Sources/CommitPyramid/Resources/
 ├─ Buildings/         # currently a plain folder, ready for migration to .atlas
 │  ├─ shack.png
 │  ├─ house_stage2.png
@@ -61,7 +61,7 @@ SpriteKit will pack the PNGs into a single atlas at build time; no code changes 
 (loading via `SKTexture(imageNamed:)` / `Bundle.module.url(forResource:withExtension:)`).
 
 **Naming convention.** Latin snake_case, `<kind>_stage<N>.png`. The `kind` name equals
-`UnitKind.rawValue` from `Sources/GitCity/Data/CityState.swift`. No stage suffix = stage 1
+`UnitKind.rawValue` from `Sources/CommitPyramid/Data/CityState.swift`. No stage suffix = stage 1
 (used for categorical units such as shack/well/raw — a single stage each).
 
 | File                    | What                                         |
@@ -223,7 +223,7 @@ If the base drifts — fix it **in code**, adjusting `anchorY` in the call to
 
 1. Generate the PNG (1024² or 1217², transparent background, viewpoint/lighting per the rules).
 2. Name it per the convention (`<kind>[_stage<N>].png`), Latin snake_case.
-3. Place it in `Sources/GitCity/Resources/<Buildings|Citizens|Terrain>/`.
+3. Place it in `Sources/CommitPyramid/Resources/<Buildings|Citizens|Terrain>/`.
 4. Run `swift build` — verify that `resource_bundle_accessor.swift` picks up the file.
 5. Launch the game, place a unit, and verify the base alignment and silhouette.
 6. If needed — adjust `anchorY` / `targetWidth` **in code**, not in the PNG.

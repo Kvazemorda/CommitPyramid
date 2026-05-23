@@ -1,4 +1,4 @@
-# GitCity — Application Concept
+# CommitPyramid — Application Concept
 
 > This is the English version of the product concept used by external contributors. The Russian source is `concept/Concept.md`.
 
@@ -9,7 +9,7 @@ decision that shifts the goal of the current cycle.
 
 ## What the product is
 
-GitCity is an interactive isometric ancient city that lives on the macOS desktop and
+CommitPyramid is an interactive isometric ancient city that lives on the macOS desktop and
 grows as the user closes real-world tasks in their daily work.
 
 The data source is **a single external log file `tasks.jsonl`**, populated by the user's
@@ -58,7 +58,7 @@ The game accepts **a single file** — `tasks.jsonl` (path configured in F-13).
 Format of each line:
 
 ```json
-{"ts": "2026-05-21T10:30:00Z", "project": "Outbyte Website", "title": "Approved the spec"}
+{"ts": "2026-05-21T10:30:00Z", "project": "my-website", "title": "Approved the spec"}
 ```
 
 - **`ts`** — scan-time timestamp (the moment the cron agent saw `[x]` and wrote the line)
@@ -262,7 +262,7 @@ tiles are visually distinct from fresh meadow. Particle effects fit the palette 
 - **Path to `tasks.jsonl`** (file picker, validated on save);
 - **Explore-mode hotkey** (⌘⌥G by default, rebindable);
 - **Path to game data** (`events.jsonl`, `state.json`, snapshots) — defaults to
-  `~/Library/Application Support/GitCity/`;
+  `~/Library/Application Support/CommitPyramid/`;
 - **Display for the city** (if several are connected — at launch only one, the main
   display; multi-display is in the backlog).
 
@@ -582,7 +582,7 @@ in Diff).
 **Composition:**
 
 1. **Connect to the user's GitHub account.** `gh` CLI authorization or SSH key, create
-   the `GitCity` repository (public, MIT license).
+   the `CommitPyramid` repository (public, MIT license).
 2. **Clean personal data from the code.** Audit: real names, email addresses, local
    paths in comments, `git config user.*` in commit metadata, any private API keys /
    tokens. Replace or strip them.
@@ -617,7 +617,7 @@ no artists, no ideas. The contributor channel is especially important for art (5
 units × final PNGs — a task one person spends months on but a community finishes in a
 week from prepared prompts).
 
-**Done criterion:** The repository is public at github.com/<user>/GitCity. Anyone can
+**Done criterion:** The repository is public at github.com/<user>/CommitPyramid. Anyone can
 clone it, read `README.md` and `docs/`, and understand what the project is and how to
 help. Documentation is fully in English (the Russian version stays only in `concept/`
 as internal). A contributor-artist takes under an hour from first visit to a merged PR

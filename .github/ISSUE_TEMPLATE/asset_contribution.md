@@ -29,7 +29,7 @@ Drag the PNG into this issue so reviewers see it inline before opening the PR.
 - [ ] RGBA, transparent background
 - [ ] Size matches `docs/sprite-generation-rules.md` § 1 (isometric 2:1, 64×32 or 128×64 px @2x)
 - [ ] Palette in sand/ochre/lapis/reed-green family (or biome-appropriate)
-- [ ] Tested locally: `swift build && swift run GitCity` — sprite renders correctly in place of the placeholder
+- [ ] Tested locally: `swift build && swift run CommitPyramid` — sprite renders correctly in place of the placeholder
 
 ## License
 

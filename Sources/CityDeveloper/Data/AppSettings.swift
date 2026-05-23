@@ -19,7 +19,8 @@ final class AppSettings: ObservableObject {
         }
     }
 
-    private static let key = "com.outbyte.citydeveloper.settings"
+    private static let key = "com.commitpyramid.app.settings"
+    private static let legacyKey = "com.outbyte.citydeveloper.settings"
 
     init(
         tasksJsonlPath: URL,
@@ -41,7 +42,13 @@ final class AppSettings: ObservableObject {
     }
 
     static func load() -> AppSettings {
-        if let data = UserDefaults.standard.data(forKey: key),
+        // One-time migration from legacy key (open-source rename).
+        let ud = UserDefaults.standard
+        if ud.data(forKey: key) == nil, let legacyData = ud.data(forKey: legacyKey) {
+            ud.set(legacyData, forKey: key)
+            ud.removeObject(forKey: legacyKey)
+        }
+        if let data = ud.data(forKey: key),
            let decoded = try? JSONDecoder().decode(Persisted.self, from: data),
            decoded.version >= 1 {
             // Migrate: for v1 files catchUpIntervalMinutes is nil → default 5.

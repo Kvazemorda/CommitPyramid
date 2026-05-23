@@ -64,7 +64,7 @@ _Это технический контракт между внешним кро
 ### Полная строка
 
 ```json
-{"ts": "2026-05-21T10:30:00Z", "project": "Outbyte Website", "title": "Согласовал ТЗ с клиентом", "task_id": "outbyte-001", "source": "/Users/ilahohlov/work/outbyte/brief.md", "version": 1}
+{"ts": "2026-05-21T10:30:00Z", "project": "my-website", "title": "Approved brief with client", "task_id": "site-001", "source": "/path/to/notes/example.md", "version": 1}
 ```
 
 ### Несколько строк подряд (фрагмент файла)

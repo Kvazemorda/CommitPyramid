@@ -8,7 +8,7 @@ assignees: ''
 
 ## What's the idea
 
-One paragraph: what should GitCity do that it doesn't today?
+One paragraph: what should CommitPyramid do that it doesn't today?
 
 ## Why
 

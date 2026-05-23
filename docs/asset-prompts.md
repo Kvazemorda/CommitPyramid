@@ -1,7 +1,7 @@
-# GitCity Asset Prompts
+# CommitPyramid Asset Prompts
 
 A catalog of AI-image prompts for open-source contributors who want to add
-sprites to GitCity (the CommitPyramid SpriteKit engine). Pick an entry below,
+sprites to CommitPyramid (the CommitPyramid SpriteKit engine). Pick an entry below,
 copy the prompt into your tool of choice (Midjourney v6+, DALL-E 3, SDXL with
 an isometric LoRA, Flux, Stable Cascade — anything that handles isometry),
 clean the alpha channel, and open a pull request.
@@ -42,7 +42,7 @@ deliver sprite sheets (one object per PNG, always).
 
 ## Style guide (read once, then apply to everything)
 
-GitCity is a **hand-painted isometric city** set in a stylised
+CommitPyramid is a **hand-painted isometric city** set in a stylised
 **Bronze-Age Mediterranean / Pharaonic** world. Think Pharaoh / Caesar 3 /
 Nebuchadnezzar / Children of the Nile, repainted at modern resolution.
 

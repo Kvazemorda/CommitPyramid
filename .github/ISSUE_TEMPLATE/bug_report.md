@@ -30,13 +30,13 @@ If applicable, drag a screenshot or short screen recording here.
 - macOS version: (e.g., 14.4 Sonoma)
 - Xcode version: `xcodebuild -version`
 - Swift version: `swift --version`
-- GitCity commit: `git rev-parse --short HEAD`
+- CommitPyramid commit: `git rev-parse --short HEAD`
 
 ## Logs
 
 If the bug is reproducible, attach:
-- `~/Library/Application Support/GitCity/errors.log` (if exists)
-- Relevant lines from `~/Library/Application Support/GitCity/events.jsonl`
+- `~/Library/Application Support/CommitPyramid/errors.log` (if exists)
+- Relevant lines from `~/Library/Application Support/CommitPyramid/events.jsonl`
 
 ## Additional context
 

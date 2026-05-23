@@ -1,12 +1,12 @@
-# Contributing Assets to GitCity
+# Contributing Assets to CommitPyramid
 
-GitCity needs art — and you don't have to be a professional artist to help. This guide covers everything from picking a sprite to opening a PR.
+CommitPyramid needs art — and you don't have to be a professional artist to help. This guide covers everything from picking a sprite to opening a PR.
 
 ---
 
 ## What We Need
 
-GitCity aims for a hand-painted, isometric look inspired by classic city-builders like Pharaoh — warm colors, strong silhouettes, a slightly painterly texture. Right now, buildings and biome tiles are procedural placeholders: colored rectangles with geometry. Every sprite you contribute replaces one of those placeholders with something that actually brings the city to life.
+CommitPyramid aims for a hand-painted, isometric look inspired by classic city-builders like Pharaoh — warm colors, strong silhouettes, a slightly painterly texture. Right now, buildings and biome tiles are procedural placeholders: colored rectangles with geometry. Every sprite you contribute replaces one of those placeholders with something that actually brings the city to life.
 
 If you can generate or hand-draw a sprite that fits the aesthetic, we want it.
 
@@ -67,13 +67,13 @@ Example: if the enum has `case townHall = "town_hall"`, the file goes in as `tow
 Build and run the app:
 
 ```bash
-swift build && swift run GitCity
+swift build && swift run CommitPyramid
 ```
 
 To spawn many units quickly and find your sprite on the scene, use the bench env var:
 
 ```bash
-CITY_BENCH_UNITS=200 swift run GitCity
+CITY_BENCH_UNITS=200 swift run CommitPyramid
 ```
 
 Scroll around the map until you see your unit type. If it shows up and looks right in context, it's good to go.

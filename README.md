@@ -1,12 +1,12 @@
-# GitCity
+# CommitPyramid
 
 > Your real work builds a virtual city. A native macOS ambient companion that turns your closed tasks, git commits, and notes into an ever-growing isometric city — kept always behind your other windows so it lives on your desktop without distracting you.
 
-![GitCity screenshot placeholder](docs/screenshot-placeholder.png)
+![CommitPyramid screenshot placeholder](docs/screenshot-placeholder.png)
 
 ## What it is
 
-You give GitCity a stream of "things you closed" — completed tasks from your task manager, commits from your repositories, or `[x]` checkboxes in your notes. Each item builds a tile in your city. Long-untouched projects fall into disrepair; revived projects bloom again. Stages, evolution chains, biomes, and NPC citizens emerge from your real activity.
+You give CommitPyramid a stream of "things you closed" — completed tasks from your task manager, commits from your repositories, or `[x]` checkboxes in your notes. Each item builds a tile in your city. Long-untouched projects fall into disrepair; revived projects bloom again. Stages, evolution chains, biomes, and NPC citizens emerge from your real activity.
 
 It is not gamification with badges. It is **ambient feedback** — a city that quietly reflects what you actually did this week.
 
@@ -27,17 +27,17 @@ Requirements:
 Build and run:
 
 ```bash
-git clone https://github.com/Kvazemorda/GitCity.git
-cd GitCity
+git clone https://github.com/Kvazemorda/CommitPyramid.git
+cd CommitPyramid
 swift build
-swift run GitCity
+swift run CommitPyramid
 ```
 
 The app starts as a translucent window pinned behind all other apps. Press **⌘⌥G** anywhere to bring it to the foreground (explore mode) and back.
 
 ## How it works
 
-GitCity reads from event sources, each implementing the `EventSource` protocol:
+CommitPyramid reads from event sources, each implementing the `EventSource` protocol:
 
 1. **`tasks.jsonl` watcher** — one line per completed task. The simplest source, written by an external script or a cron job.
 2. **Notes/Folder watcher** — scans `.md` files for `[x]` checkboxes, headings, bullets, or frontmatter, configurable in Settings.
@@ -68,7 +68,7 @@ The city currently renders procedural placeholders for all buildings and biomes 
 
 ## Concept and product principles
 
-- [`docs/concept.md`](docs/concept.md) — what GitCity is, who it's for, why.
+- [`docs/concept.md`](docs/concept.md) — what CommitPyramid is, who it's for, why.
 - [`docs/sprite-generation-rules.md`](docs/sprite-generation-rules.md) — technical and stylistic rules for art assets.
 - [`docs/log-format.md`](docs/log-format.md) — `tasks.jsonl` and `events.jsonl` specification.
 

@@ -1,6 +1,6 @@
-# Contributing to GitCity
+# Contributing to CommitPyramid
 
-Thanks for considering contributing to GitCity. Here's how to get involved — whether you're fixing a bug, suggesting a feature, or dropping in some pixel art.
+Thanks for considering contributing to CommitPyramid. Here's how to get involved — whether you're fixing a bug, suggesting a feature, or dropping in some pixel art.
 
 ---
 
@@ -21,7 +21,7 @@ Be kind, assume good intent. That's it.
 
 ## Before You Start
 
-1. Read [`docs/concept.md`](concept.md) and [`docs/architecture.md`](architecture.md) to understand what GitCity is and how it's structured.
+1. Read [`docs/concept.md`](concept.md) and [`docs/architecture.md`](architecture.md) to understand what CommitPyramid is and how it's structured.
 2. Look at open Issues — your idea or bug might already be tracked.
 3. For anything non-trivial (new subsystem, significant refactor, new game mechanic), open a feature request Issue first. A quick discussion about approach can save everyone time.
 
@@ -30,10 +30,10 @@ Be kind, assume good intent. That's it.
 ## Development Setup
 
 ```bash
-git clone https://github.com/Kvazemorda/GitCity.git
-cd GitCity
+git clone https://github.com/Kvazemorda/CommitPyramid.git
+cd CommitPyramid
 swift build
-swift run GitCity
+swift run CommitPyramid
 ```
 
 **Requirements:** macOS 14+, Xcode 15+. No external dependencies — everything is in the Swift package.
@@ -42,7 +42,7 @@ swift run GitCity
 
 ## Code Style
 
-GitCity follows standard Swift conventions with a few project-specific preferences:
+CommitPyramid follows standard Swift conventions with a few project-specific preferences:
 
 - **4-space indentation** (no tabs)
 - **`final class` by default** — open it up only if subclassing is intentional
@@ -106,4 +106,4 @@ docs/                        # English public documentation
 
 ## Tasks System
 
-GitCity uses a structured PM/lead/run workflow internally (documented under `concept/`) to track planned work across cycles. Contributors don't need to follow any of that — just open Issues and PRs naturally. The maintainer will pick up your contribution and integrate it into the planning flow.
+CommitPyramid uses a structured PM/lead/run workflow internally (documented under `concept/`) to track planned work across cycles. Contributors don't need to follow any of that — just open Issues and PRs naturally. The maintainer will pick up your contribution and integrate it into the planning flow.

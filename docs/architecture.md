@@ -1,11 +1,11 @@
-# GitCity — Architecture
+# CommitPyramid — Architecture
 
-This document is for contributors who want to understand how GitCity is wired
+This document is for contributors who want to understand how CommitPyramid is wired
 together internally. For the product vision and feature scope, see
 [`concept.md`](concept.md). For the on-disk wire format of events, snapshots and
 sidecar files, see [`log-format.md`](log-format.md).
 
-GitCity is a macOS desktop app written in **Swift 6** on top of **SwiftUI** (UI
+CommitPyramid is a macOS desktop app written in **Swift 6** on top of **SwiftUI** (UI
 shell), **SpriteKit** (city render), **AppKit** (window placement), and
 **Carbon HIToolbox** (global hotkey). The build is driven by Swift Package
 Manager — no Xcode project is required.
@@ -102,7 +102,7 @@ scene, and wires their callbacks to one another.
 
 ## 3. Event sourcing model
 
-GitCity is an event-sourced application end to end. **The append-only event log
+CommitPyramid is an event-sourced application end to end. **The append-only event log
 is the source of truth; `state` is a memoised fold over it.**
 
 ### 3.1 The pipeline for a single task
@@ -313,7 +313,7 @@ without explicit notification plumbing.
 
 ## 7. Determinism contract
 
-GitCity guarantees that replaying `events.jsonl` from an empty state yields
+CommitPyramid guarantees that replaying `events.jsonl` from an empty state yields
 byte-identical `CityState` to the live run that produced it. The invariants
 that make this work:
 
@@ -376,7 +376,7 @@ The exact JSON schemas of `events.jsonl` and `state.json` are in
 
 ## 9. Threading model
 
-GitCity uses a small, deliberately simple set of queues. The default is to do
+CommitPyramid uses a small, deliberately simple set of queues. The default is to do
 everything on the main queue and step off it only when a clear reason exists
 (file I/O, blocking shells, file-system events).
 

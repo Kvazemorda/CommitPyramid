@@ -608,3 +608,45 @@ F-18 + F-19 идут через poll). Состоит из:
 осталась только в `concept/` как внутренняя). Контрибьютор-художник за час
 от первого визита до merged PR с новым PNG. Нет утечек персональных данных в
 коммитах или коде.
+
+---
+
+### F-22: Apple Notes integration (источник событий из macOS Notes.app)
+
+**Что:** Адаптер `AppleNotesEventSource` (реализует `EventSource`), позволяющий
+пользователю подключить заметки из встроенного macOS Notes.app как источник
+задач — наравне с F-18 (folder watcher) и F-19 (git watcher).
+
+**Состав:**
+
+1. **Доступ к Notes.app.** Два пути:
+   - **AppleScript / ScriptingBridge** (`tell application "Notes" to get every note`) —
+     требует разрешения пользователя при первом запуске (System Settings → Privacy →
+     Automation). Стабильный API, поддерживается Apple. Минус: блокирующие IPC-вызовы,
+     медленный при больших vault'ах.
+   - **Прямой доступ к SQLite** (`~/Library/Group Containers/group.com.apple.notes/
+     NoteStore.sqlite`) — без разрешений, быстрый. Минус: содержимое заметок
+     зашифровано CoreData blob'ами, нужна reverse-инженерия структуры (есть
+     open-source примеры: `apple-notes-liberator`). Хрупкий при обновлениях macOS.
+2. **Settings UI секция «Apple Notes watcher»:**
+   - Кнопка «Connect to Notes» — запросит permission через AppleScript.
+   - Список папок Notes (iCloud accounts, On My Mac) → юзер выбирает какие подключить.
+   - Шаблон детекции «выполненной задачи»: `[x]` в чек-листе заметки (стандарт Apple
+     Checklist), либо строка с эмодзи ✅, либо frontmatter-like header.
+   - Стратегия dedup: per-note `lastModified` timestamp + дайджест содержимого.
+3. **Маппинг на projectId:**
+   - По имени папки Notes (например, папка «MyApp» в Notes → projectId «MyApp»).
+   - Или по тегу `#projectid` внутри заметки.
+4. **Catch-up интеграция:** AppleNotesEventSource подписывается на CatchUpScheduler
+   (F-20) — periodic poll + immediate scan при старте.
+
+**Why:** Многие пользователи держат задачи и идеи в Apple Notes — это нативное
+приложение macOS, синхронизируется через iCloud, доступно с iPhone/iPad. Без
+этого адаптера такие пользователи вынуждены вручную экспортировать в `.md` —
+лишний шаг, барьер для adoption.
+
+**Done-критерий:** Пользователь в Settings подключает Apple Notes одним нажатием
+(с системным confirm permission), выбирает 1+ папок, ставит `[x]` в любой заметке
+из этих папок — в течение 5 минут (или immediate scan при старте) на карте появляется
+новый юнит в соответствующем квартале. История изменений идемпотентна при replay
+(не пишет дубль event'ов на ту же `[x]`).

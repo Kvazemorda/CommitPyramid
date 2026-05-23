@@ -18,7 +18,7 @@ How to verify this works:
 ```bash
 swift build
 swift test
-swift run GitCity
+swift run CommitPyramid
 # Then: ...
 ```
 

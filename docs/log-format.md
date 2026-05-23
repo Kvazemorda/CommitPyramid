@@ -1,4 +1,4 @@
-# GitCity — `tasks.jsonl` Format Specification
+# CommitPyramid — `tasks.jsonl` Format Specification
 
 > English version. The Russian source is `concept/LogFormat.md` and remains the working document for the maintainer.
 
@@ -17,7 +17,7 @@ events in its own `events.jsonl`.
 The file path is configured in game settings (F-14). Default:
 
 ```
-~/Library/Application Support/GitCity/tasks.jsonl
+~/Library/Application Support/CommitPyramid/tasks.jsonl
 ```
 
 If the file does not exist, the game creates an empty file on first launch and begins watching it.
@@ -60,28 +60,28 @@ logic. This allows the cron agent to embed service metadata without breaking the
 ### Minimal Valid Line
 
 ```json
-{"ts": "2026-05-21T10:30:00Z", "project": "Outbyte Website", "title": "Approved the spec with the client"}
+{"ts": "2026-05-21T10:30:00Z", "project": "my-website", "title": "Approved the spec with the client"}
 ```
 
 ### Full Line
 
 ```json
-{"ts": "2026-05-21T10:30:00Z", "project": "Outbyte Website", "title": "Approved the spec with the client", "task_id": "outbyte-001", "source": "/path/to/brief.md", "version": 1}
+{"ts": "2026-05-21T10:30:00Z", "project": "my-website", "title": "Approved the spec with the client", "task_id": "site-001", "source": "/path/to/brief.md", "version": 1}
 ```
 
 ### Multiple Consecutive Lines (file fragment)
 
 ```
 # 2026-05-21 — tasks added for the week
-{"ts": "2026-05-15T09:00:00Z", "project": "GitCity", "title": "Drafted the concept"}
-{"ts": "2026-05-21T10:30:00Z", "project": "Outbyte Website", "title": "Approved the spec"}
-{"ts": "2026-05-21T11:00:00Z", "project": "Outbyte Website", "title": "Sent the contract"}
+{"ts": "2026-05-15T09:00:00Z", "project": "CommitPyramid", "title": "Drafted the concept"}
+{"ts": "2026-05-21T10:30:00Z", "project": "my-website", "title": "Approved the spec"}
+{"ts": "2026-05-21T11:00:00Z", "project": "my-website", "title": "Sent the contract"}
 ```
 
 ## Project Identification
 
-- `project` is compared **case-sensitive, as-is, without trim**. That is, `"Outbyte"` and
-  `"outbyte"` are **two different districts**.
+- `project` is compared **case-sensitive, as-is, without trim**. That is, `"my-website"` and
+  `"my-site"` are **two different districts**.
 - To avoid accidental "duplicates" (typo in name → new district), the cron agent must use a
   stable canonical name.
 - If the project name genuinely changes and the district needs to be "renamed", that is a
@@ -115,7 +115,7 @@ present.
 The game stores the offset of the last processed position in `tasks.jsonl` in the file:
 
 ```
-~/Library/Application Support/GitCity/ingestion-state.json
+~/Library/Application Support/CommitPyramid/ingestion-state.json
 ```
 
 Format:
@@ -139,7 +139,7 @@ Future format changes must:
 
 ## Minimal Working Example
 
-1. The user creates `~/Library/Application Support/GitCity/tasks.jsonl` (or the game creates it
+1. The user creates `~/Library/Application Support/CommitPyramid/tasks.jsonl` (or the game creates it
    automatically).
 2. The user's cron agent appends a line to the file:
    ```json
