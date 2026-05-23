@@ -12,10 +12,18 @@ enum UnitSprites {
     /// Кеш текстур, чтобы не перечитывать PNG на каждый юнит.
     private static var spriteTextureCache: [String: SKTexture] = [:]
 
+    /// Negative-cache: имена PNG, которых нет в бандле. Исключает повторные Bundle URL lookups
+    /// при каждом stage-up (иначе ~250 lookup'ов на 50 юнитов = 3–5 мс на main-thread).
+    /// (TASK-036)
+    private static var missingTextureNames: Set<String> = []
+
     /// Пытается загрузить PNG из Resources/Buildings/<name>.png и собрать SKSpriteNode
     /// под изометрический тайл. anchorY смещает основание спрайта в нужное место тайла
     /// (0.30 ≈ низ основания изометрического домика).
     static func loadBuildingSprite(named name: String, targetWidth: CGFloat, anchorY: CGFloat) -> SKSpriteNode? {
+        // Negative-cache: если уже знаем что файла нет — не ходим в Bundle.
+        guard !missingTextureNames.contains(name) else { return nil }
+
         let texture: SKTexture
         if let cached = spriteTextureCache[name] {
             texture = cached
@@ -24,7 +32,10 @@ enum UnitSprites {
                 let url = Bundle.module.url(forResource: name, withExtension: "png", subdirectory: "Buildings")
                        ?? Bundle.module.url(forResource: name, withExtension: "png"),
                 let image = NSImage(contentsOf: url)
-            else { return nil }
+            else {
+                missingTextureNames.insert(name)
+                return nil
+            }
             texture = SKTexture(image: image)
             texture.filteringMode = .linear
             spriteTextureCache[name] = texture
@@ -84,6 +95,8 @@ enum UnitSprites {
     }
 
     /// Диспетчер по категории → stage sprite. stage зажат в [1..5].
+    /// - Note: Deprecated в TASK-036. Новый API: `makeKindStageBuilding(kind:stage:)`.
+    @available(*, deprecated, renamed: "makeKindStageBuilding(kind:stage:)")
     static func makeCategoricalBuilding(category: UnitCategory, stage: Int) -> SKNode {
         let s = max(1, min(stage, 5))
         switch category {
@@ -570,6 +583,509 @@ enum UnitSprites {
         // Procedural placeholder
         let spec = placeholderSpecs[kind] ?? fallbackSpec(for: kind.category, stage: effectiveStage)
         return makePlaceholderBuilding(spec: spec, large: kind.large)
+    }
+
+    // MARK: - Kind × Stage building dispatch (TASK-036)
+
+    /// Tier-визуал для конкретного UnitKind на заданном stage квартала.
+    ///
+    /// stage зажимается в [kind.minStage ... 5]; при stage < minStage рисуется placeholder
+    /// для stage = kind.minStage (edge case: Дворец на stage 0 → рисуется stage 5).
+    ///
+    /// Стратегия (порядок):
+    ///   1. PNG `<kind>_stage<effectiveStage>.png` с fallback по убыванию stage до minStage;
+    ///   2. PNG `<kind>.png` (single-stage large без tier'ов);
+    ///   3. Процедурный placeholder через makeProceduralBuilding(kind:stage:).
+    static func makeKindStageBuilding(kind: UnitKind, stage: Int) -> SKNode {
+        let minS = kind.minStage
+        let effective = max(minS, min(stage, 5))
+        let rawVal = kind.rawValue
+
+        // 1. PNG с tier-суффиксом — fallback по убыванию stage до minStage.
+        for s in stride(from: effective, through: minS, by: -1) {
+            let name = "\(rawVal)_stage\(s)"
+            if let sprite = loadBuildingSprite(named: name, targetWidth: tileWidth, anchorY: 0.30) {
+                let node = SKNode()
+                sprite.name = "building"
+                node.addChild(sprite)
+                return node
+            }
+        }
+
+        // 2. PNG без stage-суффикса (large-юниты без stage-вариаций).
+        if let sprite = loadBuildingSprite(named: rawVal, targetWidth: tileWidth, anchorY: 0.30) {
+            let node = SKNode()
+            sprite.name = "building"
+            node.addChild(sprite)
+            return node
+        }
+
+        // 3. Процедурный placeholder по категории/kind.
+        return makeProceduralBuilding(kind: kind, stage: effective)
+    }
+
+    /// Диспетчер процедурных placeholder'ов по категории.
+    /// Для residential/religious/military — per-kind фабрики (TASK-036).
+    /// Для infra/production/social — делегируем в категориальные (satisfies AC «≥2 tier»).
+    private static func makeProceduralBuilding(kind: UnitKind, stage: Int) -> SKNode {
+        switch kind.category {
+        case .residential:
+            return makeResidentialKind(kind: kind, stage: stage)
+        case .religious:
+            return makeReligiousStage(kind: kind, stage: stage)
+        case .military:
+            return makeMilitaryStage(kind: kind, stage: stage)
+        case .infrastructure:
+            return makeInfrastructureStage(stage)
+        case .production:
+            return makeProductionStage(stage)
+        case .social:
+            return makeSocialStage(stage)
+        }
+    }
+
+    // MARK: - Residential per-kind tier factory (TASK-036)
+
+    /// Dispatcher для 12 жилых юнитов: каждый kind → индивидуальный визуал по stage.
+    /// Tier-лестница: dugout(h8) → shack(h14) → hut/farmHouse(h16) → house/stoneHouse(h22)
+    ///   → twoStoryHouse/townhouse(h28) → tenement(h34) → manor/villa(h40) → palace(h48).
+    private static func makeResidentialKind(kind: UnitKind, stage: Int) -> SKNode {
+        // Residential preset: (footprint, height, bodyColor, roofStyle, roofColor, decors)
+        struct Preset {
+            let fp: CGSize
+            let h: CGFloat
+            let body: SKColor
+            let roofStyle: PlaceholderSpec.RoofStyle
+            let roofColor: SKColor
+            let windows: Int     // 0–3 windows per row
+            let windowRows: Int  // 0–2 rows
+        }
+
+        let preset: Preset
+        switch kind {
+        case .dugout:
+            // Землянка: низкий, плоская крыша, землянистый цвет
+            preset = Preset(fp: CGSize(width: 26, height: 14), h: 8,
+                            body: Palette.clay.darkened(by: 0.15), roofStyle: .flat,
+                            roofColor: Palette.clay.darkened(by: 0.25), windows: 0, windowRows: 0)
+        case .shack:
+            preset = Preset(fp: CGSize(width: 30, height: 16), h: 14,
+                            body: Palette.clay, roofStyle: .pyramid,
+                            roofColor: Palette.ochre, windows: 0, windowRows: 0)
+        case .hut:
+            preset = Preset(fp: CGSize(width: 32, height: 16), h: 16,
+                            body: Palette.warmBrown.lightened(by: 0.05), roofStyle: .pyramid,
+                            roofColor: Palette.ochre, windows: 1, windowRows: 1)
+        case .farmHouse:
+            preset = Preset(fp: CGSize(width: 34, height: 18), h: 18,
+                            body: Palette.warmBrown, roofStyle: .pyramid,
+                            roofColor: Palette.clay, windows: 1, windowRows: 1)
+        case .house:
+            preset = Preset(fp: CGSize(width: 36, height: 18), h: 22,
+                            body: Palette.stone.lightened(by: 0.06), roofStyle: .pyramid,
+                            roofColor: Palette.clay, windows: 1, windowRows: 1)
+        case .twoStoryHouse:
+            preset = Preset(fp: CGSize(width: 34, height: 18), h: 28,
+                            body: Palette.stone, roofStyle: .pyramid,
+                            roofColor: Palette.clay, windows: 1, windowRows: 2)
+        case .stoneHouse:
+            preset = Preset(fp: CGSize(width: 38, height: 20), h: 28,
+                            body: Palette.stone.darkened(by: 0.08), roofStyle: .pyramid,
+                            roofColor: Palette.smokeGrey, windows: 2, windowRows: 1)
+        case .townhouse:
+            preset = Preset(fp: CGSize(width: 34, height: 18), h: 34,
+                            body: Palette.sandMid, roofStyle: .pyramid,
+                            roofColor: Palette.clay, windows: 2, windowRows: 2)
+        case .tenement:
+            preset = Preset(fp: CGSize(width: 38, height: 20), h: 38,
+                            body: Palette.sandMid.darkened(by: 0.05), roofStyle: .flat,
+                            roofColor: Palette.stone.darkened(by: 0.15), windows: 3, windowRows: 2)
+        case .manor:
+            preset = Preset(fp: CGSize(width: 46, height: 24), h: 34,
+                            body: Palette.parchment.darkened(by: 0.08), roofStyle: .pyramid,
+                            roofColor: Palette.clay, windows: 2, windowRows: 2)
+        case .villa:
+            preset = Preset(fp: CGSize(width: 48, height: 24), h: 40,
+                            body: Palette.parchment, roofStyle: .pyramid,
+                            roofColor: Palette.clay.darkened(by: 0.05), windows: 3, windowRows: 2)
+        case .palace:
+            preset = Preset(fp: CGSize(width: 52, height: 28), h: 48,
+                            body: Palette.parchment.lightened(by: 0.04), roofStyle: .pyramid,
+                            roofColor: Palette.ochre, windows: 3, windowRows: 2)
+        default:
+            // Safety net: не должно срабатывать для residential — делегируем в категориальный.
+            return makeResidentialStage(stage)
+        }
+
+        let node = SKNode()
+        // Тело здания (масштаб высоты по stage для tier-вариации)
+        let stageMult: CGFloat = stage <= 1 ? 0.85 : (stage >= 4 ? 1.10 : 1.0)
+        let h = preset.h * stageMult
+
+        let body = IsoBuilder.cube(
+            footprint: preset.fp, height: h,
+            colors: .init(
+                top:    preset.body.lightened(by: 0.08),
+                left:   preset.body,
+                right:  preset.body.darkened(by: 0.18),
+                stroke: Palette.inkDark.withAlphaComponent(0.6)
+            )
+        )
+        node.addChild(body)
+
+        // Кирпичный хэтч
+        let rows = max(1, Int(h / 6))
+        node.addChild(IsoBuilder.brickHatch(
+            footprint: preset.fp, height: h, rows: rows,
+            color: Palette.inkDark.withAlphaComponent(0.18)
+        ))
+
+        // Крыша
+        switch preset.roofStyle {
+        case .pyramid:
+            let peak = max(8, h * 0.35)
+            let roof = IsoBuilder.pyramidRoof(
+                footprint: preset.fp, peak: peak,
+                leftColor: preset.roofColor,
+                rightColor: preset.roofColor.darkened(by: 0.18),
+                strokeColor: Palette.inkDark.withAlphaComponent(0.6)
+            )
+            roof.position = CGPoint(x: 0, y: h)
+            node.addChild(roof)
+        case .flat:
+            let topShade = IsoBuilder.groundTile(
+                width: preset.fp.width, height: preset.fp.height,
+                fillColor: preset.roofColor,
+                strokeColor: Palette.inkDark
+            )
+            topShade.position = CGPoint(x: 0, y: h)
+            node.addChild(topShade)
+        default:
+            break
+        }
+
+        // Окна
+        if preset.windowRows > 0 && preset.windows > 0 {
+            let rowPositions: [CGFloat] = preset.windowRows == 1 ? [0.42] : [0.30, 0.60]
+            let totalWins = preset.windows
+            let spacing = preset.fp.width / CGFloat(totalWins + 1)
+            for rowFrac in rowPositions.prefix(preset.windowRows) {
+                for i in 1...totalWins {
+                    let win = SKShapeNode(rect: CGRect(x: -2.5, y: 0, width: 5, height: 5))
+                    win.fillColor = Palette.skyNight.withAlphaComponent(0.82)
+                    win.strokeColor = Palette.inkDark.withAlphaComponent(0.5)
+                    win.lineWidth = 0.4
+                    win.position = CGPoint(
+                        x: CGFloat(i) * spacing - preset.fp.width / 2,
+                        y: h * rowFrac
+                    )
+                    node.addChild(win)
+                }
+            }
+        }
+
+        // Для palace — добавляем колонны-балкон
+        if kind == .palace {
+            for dx: CGFloat in [-preset.fp.width * 0.3, preset.fp.width * 0.3] {
+                let col = IsoBuilder.cube(
+                    footprint: CGSize(width: 3, height: 2), height: min(h * 0.6, 18),
+                    colors: .init(
+                        top:    Palette.parchment,
+                        left:   Palette.parchment.darkened(by: 0.08),
+                        right:  Palette.parchment.darkened(by: 0.18),
+                        stroke: Palette.inkDark.withAlphaComponent(0.5)
+                    )
+                )
+                col.position = CGPoint(x: dx, y: h * 0.1)
+                node.addChild(col)
+            }
+        }
+
+        return node
+    }
+
+    // MARK: - Religious stage factory (TASK-036)
+
+    /// 2+ tier'а для религиозных юнитов:
+    ///   tier «low»  (stage 1–2): компактный, h~22, пирамидальная крыша;
+    ///   tier «mid»  (stage 3):   каменный с колоннадой, h~34;
+    ///   tier «high» (stage 4–5): монументальный, h~48, шпиль/купол.
+    private static func makeReligiousStage(kind: UnitKind, stage: Int) -> SKNode {
+        let node = SKNode()
+        let tier: Int
+        switch stage {
+        case 0...2: tier = 1
+        case 3:     tier = 2
+        default:    tier = 3
+        }
+
+        // Базовые параметры по tier'у
+        let fp: CGSize
+        let h: CGFloat
+        let bodyColor: SKColor
+        let roofColor: SKColor
+
+        switch tier {
+        case 1:  // низкий — Часовня-стиль
+            fp = CGSize(width: 28, height: 14)
+            h = 22
+            bodyColor = Palette.parchment.darkened(by: 0.05)
+            roofColor = Palette.ochre.lightened(by: 0.05)
+        case 2:  // средний — Храм с колоннадой
+            fp = CGSize(width: 40, height: 22)
+            h = 34
+            bodyColor = Palette.parchment.darkened(by: 0.03)
+            roofColor = Palette.ochre
+        default: // высокий — Собор/Пирамида
+            fp = CGSize(width: 52, height: 28)
+            h = 48
+            bodyColor = Palette.parchment.lightened(by: 0.04)
+            roofColor = Palette.ochre.lightened(by: 0.08)
+        }
+
+        // Для пирамиды — особый силуэт: песчаный цвет
+        let isActualPyramid = (kind == .pyramid)
+        let finalBodyColor = isActualPyramid ? Palette.sandLight : bodyColor
+        let finalRoofColor = isActualPyramid ? Palette.ochre.lightened(by: 0.06) : roofColor
+
+        // Тело
+        let body = IsoBuilder.cube(
+            footprint: fp, height: h,
+            colors: .init(
+                top:    finalBodyColor.lightened(by: 0.06),
+                left:   finalBodyColor,
+                right:  finalBodyColor.darkened(by: 0.20),
+                stroke: Palette.inkDark.withAlphaComponent(0.6)
+            )
+        )
+        node.addChild(body)
+        node.addChild(IsoBuilder.brickHatch(
+            footprint: fp, height: h, rows: max(2, Int(h / 8)),
+            color: Palette.inkDark.withAlphaComponent(0.15)
+        ))
+
+        // Крыша / шпиль
+        if isActualPyramid {
+            // Пирамида: огромный пирамидальный шпиль
+            let pyramid = IsoBuilder.pyramidRoof(
+                footprint: fp, peak: h * 0.8,
+                leftColor: finalRoofColor,
+                rightColor: finalRoofColor.darkened(by: 0.18),
+                strokeColor: Palette.inkDark.withAlphaComponent(0.6)
+            )
+            pyramid.position = CGPoint(x: 0, y: h)
+            node.addChild(pyramid)
+        } else {
+            let peak = max(10, h * 0.30)
+            let roof = IsoBuilder.pyramidRoof(
+                footprint: fp, peak: peak,
+                leftColor: finalRoofColor,
+                rightColor: finalRoofColor.darkened(by: 0.18),
+                strokeColor: Palette.inkDark.withAlphaComponent(0.6)
+            )
+            roof.position = CGPoint(x: 0, y: h)
+            node.addChild(roof)
+        }
+
+        // Tier 2+: колонны по фасаду
+        if tier >= 2 {
+            let colCount = tier == 2 ? 3 : 5
+            let spread = fp.width * 0.36
+            let step = spread * 2 / CGFloat(colCount - 1)
+            for i in 0..<colCount {
+                let dx = -spread + CGFloat(i) * step
+                let col = IsoBuilder.cube(
+                    footprint: CGSize(width: 3, height: 2), height: min(h * 0.65, 22),
+                    colors: .init(
+                        top:    Palette.parchment,
+                        left:   Palette.parchment.darkened(by: 0.08),
+                        right:  Palette.parchment.darkened(by: 0.18),
+                        stroke: Palette.inkDark.withAlphaComponent(0.5)
+                    )
+                )
+                col.position = CGPoint(x: dx, y: h * 0.08)
+                node.addChild(col)
+            }
+        }
+
+        // Tier 3: шпиль поверх купола
+        if tier == 3 && !isActualPyramid {
+            let spire = IsoBuilder.cube(
+                footprint: CGSize(width: 5, height: 3), height: 20,
+                colors: .init(
+                    top:    Palette.ochre,
+                    left:   Palette.ochre.darkened(by: 0.15),
+                    right:  Palette.ochre.darkened(by: 0.30),
+                    stroke: Palette.inkDark.withAlphaComponent(0.7)
+                )
+            )
+            spire.position = CGPoint(x: 0, y: h + peak(for: fp, h: h))
+            node.addChild(spire)
+        }
+
+        return node
+    }
+
+    /// Helper: высота пика для симметрии шпиля над крышей.
+    private static func peak(for fp: CGSize, h: CGFloat) -> CGFloat {
+        max(10, h * 0.30)
+    }
+
+    // MARK: - Military stage factory (TASK-036)
+
+    /// 3 tier'а для военных юнитов:
+    ///   tier «low»  (stage 1–2): Сторожевая башня — узкий высокий куб, флажок;
+    ///   tier «mid»  (stage 3):   Казармы — широкий куб, амбразуры;
+    ///   tier «high» (stage 4–5): Верфь — низкий L-образный, слип к воде.
+    private static func makeMilitaryStage(kind: UnitKind, stage: Int) -> SKNode {
+        let node = SKNode()
+        // Маппинг kind → tier
+        let tier: Int
+        switch kind {
+        case .watchtower: tier = 1
+        case .barracks:   tier = 2
+        case .shipyard:   tier = 3
+        default:          tier = max(1, min(3, stage - 1))
+        }
+
+        switch tier {
+        case 1:
+            // Сторожевая башня: узкий высокий куб h=36, остроконечная крыша, флажок
+            let fp = CGSize(width: 20, height: 12)
+            let h: CGFloat = 36
+            let body = IsoBuilder.cube(
+                footprint: fp, height: h,
+                colors: .init(
+                    top:    Palette.stone.darkened(by: 0.08),
+                    left:   Palette.stone.darkened(by: 0.10),
+                    right:  Palette.stone.darkened(by: 0.25),
+                    stroke: Palette.inkDark
+                )
+            )
+            node.addChild(body)
+            node.addChild(IsoBuilder.brickHatch(
+                footprint: fp, height: h, rows: 6,
+                color: Palette.inkDark.withAlphaComponent(0.22)
+            ))
+            // Остроконечная крыша
+            let roof = IsoBuilder.pyramidRoof(
+                footprint: fp, peak: 14,
+                leftColor: Palette.smokeGrey.darkened(by: 0.10),
+                rightColor: Palette.smokeGrey.darkened(by: 0.25),
+                strokeColor: Palette.inkDark.withAlphaComponent(0.7)
+            )
+            roof.position = CGPoint(x: 0, y: h)
+            node.addChild(roof)
+            // Флажок-треугольник
+            let pole = SKShapeNode(rect: CGRect(x: -0.5, y: 0, width: 1, height: 10))
+            pole.fillColor = Palette.warmBrown
+            pole.strokeColor = .clear
+            pole.position = CGPoint(x: 0, y: h + 14)
+            node.addChild(pole)
+            let flag = SKShapeNode(rect: CGRect(x: 0, y: 0, width: 8, height: 5))
+            flag.fillColor = Palette.clay
+            flag.strokeColor = Palette.inkDark.withAlphaComponent(0.4)
+            flag.lineWidth = 0.5
+            flag.position = CGPoint(x: 0, y: h + 20)
+            node.addChild(flag)
+            // Амбразуры (тёмные прямоугольники)
+            for dx in [-5, 5] {
+                let embrasure = SKShapeNode(rect: CGRect(x: -1.5, y: 0, width: 3, height: 4))
+                embrasure.fillColor = Palette.inkDark.withAlphaComponent(0.70)
+                embrasure.strokeColor = .clear
+                embrasure.position = CGPoint(x: CGFloat(dx), y: h * 0.70)
+                node.addChild(embrasure)
+            }
+
+        case 2:
+            // Казармы: широкий куб h=24, плоская крыша, амбразуры
+            let fp = CGSize(width: 48, height: 24)
+            let h: CGFloat = 24
+            let body = IsoBuilder.cube(
+                footprint: fp, height: h,
+                colors: .init(
+                    top:    Palette.stone.darkened(by: 0.12),
+                    left:   Palette.stone.darkened(by: 0.15),
+                    right:  Palette.stone.darkened(by: 0.30),
+                    stroke: Palette.inkDark
+                )
+            )
+            node.addChild(body)
+            node.addChild(IsoBuilder.brickHatch(
+                footprint: fp, height: h, rows: 4,
+                color: Palette.inkDark.withAlphaComponent(0.22)
+            ))
+            // Плоская крыша
+            let topShade = IsoBuilder.groundTile(
+                width: fp.width, height: fp.height,
+                fillColor: Palette.stone.darkened(by: 0.28),
+                strokeColor: Palette.inkDark
+            )
+            topShade.position = CGPoint(x: 0, y: h)
+            node.addChild(topShade)
+            // Амбразуры (один ряд)
+            for dx in stride(from: -18, through: 18, by: 9) {
+                let emb = SKShapeNode(rect: CGRect(x: -1.5, y: 0, width: 3, height: 4))
+                emb.fillColor = Palette.inkDark.withAlphaComponent(0.70)
+                emb.strokeColor = .clear
+                emb.position = CGPoint(x: CGFloat(dx), y: h * 0.72)
+                node.addChild(emb)
+            }
+
+        default:
+            // Верфь: низкий широкий объект h=18, деревянные балки, "слип" (наклонный пандус)
+            let fp = CGSize(width: 52, height: 22)
+            let h: CGFloat = 18
+            let body = IsoBuilder.cube(
+                footprint: fp, height: h,
+                colors: .init(
+                    top:    Palette.warmBrown.darkened(by: 0.12),
+                    left:   Palette.warmBrown.darkened(by: 0.15),
+                    right:  Palette.warmBrown.darkened(by: 0.30),
+                    stroke: Palette.inkDark
+                )
+            )
+            node.addChild(body)
+            node.addChild(IsoBuilder.brickHatch(
+                footprint: fp, height: h, rows: 3,
+                color: Palette.inkDark.withAlphaComponent(0.25)
+            ))
+            // Плоская деревянная крыша
+            let topShade = IsoBuilder.groundTile(
+                width: fp.width, height: fp.height,
+                fillColor: Palette.warmBrown.darkened(by: 0.30),
+                strokeColor: Palette.inkDark
+            )
+            topShade.position = CGPoint(x: 0, y: h)
+            node.addChild(topShade)
+            // Слип: горизонтальная полоса к воде (симуляция пандуса)
+            let slipW: CGFloat = fp.width * 0.4
+            let slip = IsoBuilder.groundTile(
+                width: slipW, height: 8,
+                fillColor: Palette.warmBrown.darkened(by: 0.22),
+                strokeColor: Palette.inkDark.withAlphaComponent(0.5)
+            )
+            slip.position = CGPoint(x: fp.width * 0.25, y: -4)
+            node.addChild(slip)
+        }
+
+        return node
+    }
+
+    // MARK: - Deprecated categorical API (kept for legacy callers)
+
+    /// - Note: Deprecated в TASK-036. Используй `makeKindStageBuilding(kind:stage:)`.
+    @available(*, deprecated, renamed: "makeKindStageBuilding(kind:stage:)")
+    static func _makeCategoricalBuildingLegacy(category: UnitCategory, stage: Int) -> SKNode {
+        let s = max(1, min(stage, 5))
+        switch category {
+        case .residential:    return makeResidentialStage(s)
+        case .infrastructure: return makeInfrastructureStage(s)
+        case .production:     return makeProductionStage(s)
+        case .social:         return makeSocialStage(s)
+        case .religious:      return makeSocialStage(s)
+        case .military:       return makeInfrastructureStage(s)
+        }
     }
 
     // MARK: - Debug coverage assertion
