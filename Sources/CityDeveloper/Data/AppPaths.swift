@@ -17,4 +17,5 @@ enum AppPaths {
     static var ingestionState: URL { appSupport.appendingPathComponent("ingestion-state.json") }
     static var errorsLog:     URL { appSupport.appendingPathComponent("errors.log") }
     static var catchupState:  URL { appSupport.appendingPathComponent("catchup-state.json") }
+    static var worldmapJson:  URL { appSupport.appendingPathComponent("worldmap.json") }
 }

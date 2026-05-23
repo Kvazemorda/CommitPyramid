@@ -31,6 +31,10 @@ final class GameScene: SKScene {
     var lifeSim: LifeSimulationManager?
     var citizenManager: CitizenManager?
 
+    /// Шумовая карта мира (TASK-026). Задаётся из AppDelegate после создания сцены.
+    /// Используется для рендера биомов в TASK-028.
+    var worldMap: NoiseMap?
+
     override func didMove(to view: SKView) {
         // За краями тайл-карты — тот же цвет травы (edge case: pan/zoom-out за границу)
         backgroundColor = Palette.nileGreen
@@ -281,13 +285,12 @@ final class GameScene: SKScene {
         // Guard: нет building-child — legacy-нода без name= (создана старым makeNode).
         guard let oldBuilding = node.childNode(withName: "building") else { return }
 
-        // Получаем category из unit state по unitId из userData.
+        // Получаем unit state по unitId из userData (нужен kind для makeKindBuilding).
         guard let unitId = node.userData?[UnitSprites.unitIdKey] as? UUID,
               let unit = engine?.state.units[unitId] else { return }
-        let category = unit.kind.category
 
-        // Строим новый building с alpha=0.
-        let newBuilding = UnitSprites.makeCategoricalBuilding(category: category, stage: newStage)
+        // Строим новый building с alpha=0 (TASK-032: kind-specific, а не категориальный).
+        let newBuilding = UnitSprites.makeKindBuilding(unit: unit, stage: newStage)
         newBuilding.name = "building"
         newBuilding.alpha = 0
         node.addChild(newBuilding)
@@ -509,6 +512,43 @@ final class GameScene: SKScene {
             }
         }
         hideInspector()
+
+        // F-17: district diamond hit-test для пустых клеток квартала.
+        // Выполняем только если кнопка моста и движок доступны.
+        guard let engine = engine, let bridge = bridge else { return }
+
+        var bestMatch: (projectId: String, dist: CGFloat)?
+        for project in engine.state.projects.values where project.decayLevel < 4 {
+            let center = isoPosition(grid: project.districtOrigin)
+            let radius = max(2, Int(ceil(sqrt(Double(max(project.unitIds.count, 4))))))
+            if isPointInDistrictDiamond(point: location, center: center, gridRadius: radius) {
+                let dist = hypot(location.x - center.x, location.y - center.y)
+                if bestMatch == nil || dist < bestMatch!.dist {
+                    bestMatch = (project.id, dist)
+                }
+            }
+        }
+
+        if let match = bestMatch {
+            // Переводим scene-координаты → координаты SKView (NSView, origin top-left).
+            let viewPoint = self.view?.convert(location, from: self) ?? location
+            bridge.inputRequest.send(.init(projectId: match.projectId, viewPoint: viewPoint))
+        }
+    }
+
+    /// Изометрический diamond hit-test для квартала проекта.
+    /// - Parameters:
+    ///   - point: точка в координатах scene (SKScene)
+    ///   - center: isoPosition центра квартала (districtOrigin) в координатах scene
+    ///   - gridRadius: радиус в тайлах (минимум 2)
+    private func isPointInDistrictDiamond(point: CGPoint, center: CGPoint, gridRadius: Int) -> Bool {
+        // Diamond в изометрии: |dx|/(r*tw/2) + |dy|/(r*th/2) ≤ 1
+        let tileW: CGFloat = 64, tileH: CGFloat = 32
+        let dx = abs(point.x - center.x)
+        let dy = abs(point.y - center.y)
+        let nx = dx / (CGFloat(gridRadius) * tileW / 2)
+        let ny = dy / (CGFloat(gridRadius) * tileH / 2)
+        return nx + ny <= 1.0
     }
 
     func showInspector(near anchor: CGPoint, unit: UnitState, project: ProjectState) {

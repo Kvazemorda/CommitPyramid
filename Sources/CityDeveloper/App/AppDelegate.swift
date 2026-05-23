@@ -18,11 +18,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController!
     private var journalWindowController: JournalWindowController!
     private var catchUpScheduler: CatchUpScheduler?
+    private var worldMapProvider: WorldMapProvider!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let screen = NSScreen.main ?? NSScreen.screens.first!
 
         appSettings = AppSettings.load()
+
+        // TASK-026: бутстрап шумовой карты мира до создания GameScene.
+        // Синхронно на main-thread; при первом запуске ≤50 мс (256×256 Perlin, M-серия).
+        worldMapProvider = WorldMapProvider(
+            seedStore: WorldSeedStore.self,
+            mapStore: WorldMapStore(url: appSettings.dataDirectory.appendingPathComponent("worldmap.json"))
+        )
 
         let snapshotStore = SnapshotStore(url: appSettings.dataDirectory.appendingPathComponent("state.json"))
         engine = CityEngine(
@@ -37,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scene.size = screen.frame.size
         scene.scaleMode = .resizeFill
         scene.engine = engine
+        scene.worldMap = worldMapProvider.map
 
         engine.onUnitBuilt = { [weak self] unit, project in
             self?.scene?.placeUnit(unit, project: project)
