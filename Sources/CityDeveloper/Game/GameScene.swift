@@ -32,11 +32,13 @@ final class GameScene: SKScene {
     var citizenManager: CitizenManager?
 
     /// Шумовая карта мира (TASK-026). Задаётся из AppDelegate после создания сцены.
-    /// Используется для рендера биомов в TASK-028.
     var worldMap: NoiseMap?
 
+    /// Рендер биомов (TASK-028). Хранится для rebuild при TASK-030 (сброс карты).
+    private var biomeRenderer: BiomeRenderer?
+
     override func didMove(to view: SKView) {
-        // За краями тайл-карты — тот же цвет травы (edge case: pan/zoom-out за границу)
+        // За краями тайл-карты — цвет травы (fallback при pan/zoom за границу).
         backgroundColor = Palette.nileGreen
         scaleMode = .resizeFill
 
@@ -44,18 +46,21 @@ final class GameScene: SKScene {
         cameraNode.position = .zero
         addChild(cameraNode)
 
-        // TASK-025: изометрическая тайл-карта 256×256 вместо плоского SKSpriteNode.
-        // Текстура и тайл-сет кэшированы в IsoTileFactory — не пересоздаются при повторном
-        // открытии окна. tileMap не имеет strong-ref на self → нет retain-cycle.
-        let tileMap = SKTileMapNode(
-            tileSet: IsoTileFactory.isometricGrassSet,
-            columns: 256, rows: 256,
-            tileSize: CGSize(width: IsoTileFactory.tileWidth, height: IsoTileFactory.tileHeight)
-        )
-        tileMap.position = .zero
-        tileMap.zPosition = -1000
-        tileMap.fill(with: IsoTileFactory.isometricGrassSet.tileGroups.first)
-        world.addChild(tileMap)
+        // TASK-028: рендер биомов через BiomeRenderer (SKTileMapNode + overlay).
+        // Если NoiseMap доступна — классифицируем биомы и строим рендер.
+        // Fallback при отсутствии worldMap — Palette.nileGreen backgroundColor (уже выше).
+        if let noiseMap = worldMap {
+            do {
+                let biomeMap = try BiomeClassifier.classify(world: noiseMap)
+                let renderer = BiomeRenderer(map: biomeMap)
+                renderer.attach(to: world)
+                biomeRenderer = renderer
+            } catch {
+                ErrorsLog.write("GameScene: BiomeClassifier failed (\(error)) — fallback to plain background")
+            }
+        } else {
+            ErrorsLog.write("GameScene: worldMap is nil — biome tile map skipped, using plain nileGreen background")
+        }
 
         addChild(world)
 

@@ -18,6 +18,18 @@ enum Palette {
     /// Тёмное дерево — «древняя» палитра: брёвна, доски, балки.
     static let warmBrown  = SKColor(red: 0.48, green: 0.30, blue: 0.16, alpha: 1.0)
 
+    // MARK: - Биомные токены (TASK-028)
+    /// Тёмная лесная зелень — биом «Лес».
+    static let forestGreen  = SKColor(red: 0.18, green: 0.32, blue: 0.18, alpha: 1.0)
+    /// Серый камень — биом «Горы».
+    static let mountainGrey = SKColor(red: 0.45, green: 0.43, blue: 0.40, alpha: 1.0)
+    /// Серо-охровый камень — биом «Камни» (предгорье).
+    static let rockBrown    = SKColor(red: 0.58, green: 0.50, blue: 0.40, alpha: 1.0)
+    /// Голубая вода — биом «Река».
+    static let riverBlue    = SKColor(red: 0.40, green: 0.62, blue: 0.78, alpha: 1.0)
+    /// Сине-зелёная вода — биом «Море».
+    static let seaTeal      = SKColor(red: 0.25, green: 0.45, blue: 0.58, alpha: 1.0)
+
     // Semantic tokens
     static let success = NSColor(red: 0.290, green: 0.561, blue: 0.243, alpha: 1.0)
     static let warning = NSColor(red: 0.831, green: 0.608, blue: 0.165, alpha: 1.0)
