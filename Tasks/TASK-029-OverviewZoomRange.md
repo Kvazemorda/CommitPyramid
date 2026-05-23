@@ -371,4 +371,4 @@ _Объём: S_
 - Lead-model: opus
 - Plan-review: revised
 - Завершена: 2026-05-22
-- Коммит: —
+- Коммит: 367cd28
