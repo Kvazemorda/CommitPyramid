@@ -90,6 +90,14 @@ struct UnitPlanner {
         socialCount: Int
     ) -> UnitKind {
 
+        // BUG-010: первый юнит квартала всегда road — фундамент.
+        // idx — 1-based taskCount; idx == 1 означает самый первый юнит нового проекта.
+        // Без этого правила road выпадал случайно по category-pattern,
+        // и кварталы могли вырасти «в чистом поле» без дороги.
+        if idx == 1 {
+            return .road
+        }
+
         // ── Шаг 1: Pick category по слоту (F-07 pattern) ──
         let baseCategory = Self.categoryPattern[(idx - 1) % Self.categoryPattern.count]
 
