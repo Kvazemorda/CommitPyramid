@@ -45,18 +45,16 @@ final class JournalWindowController: NSObject, NSWindowDelegate {
         w.styleMask = [.titled, .closable, .resizable]
         w.setContentSize(NSSize(width: 480, height: 600))
         w.contentMinSize = NSSize(width: 480, height: 600)
+        w.minSize = NSSize(width: 380, height: 480)
         w.delegate = self
 
-        // Центрирование относительно главного окна приложения (мультимонитор-friendly).
-        // Fallback — центр главного экрана.
-        if let main = NSApp.mainWindow {
-            let m = main.frame
-            let size = w.frame.size
-            let origin = NSPoint(
-                x: m.midX - size.width / 2,
-                y: m.midY - size.height / 2
-            )
-            w.setFrameOrigin(origin)
+        // BUG-002: прижать к правому краю экрана, центрировать по вертикали.
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        if let visibleFrame = screen?.visibleFrame {
+            let windowSize = w.frame.size
+            let xPos = visibleFrame.maxX - windowSize.width - 16
+            let yPos = visibleFrame.midY - windowSize.height / 2
+            w.setFrame(NSRect(x: xPos, y: yPos, width: windowSize.width, height: windowSize.height), display: true)
         } else {
             w.center()
         }
