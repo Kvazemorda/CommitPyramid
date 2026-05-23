@@ -37,10 +37,13 @@ struct BiomeClassifier {
     static let minSeaArea: Int = 8
 
     /// Минимальное число различных биомов (AC1).
-    static let minDiversity: Int = 4
+    static let minDiversity: Int = 7
 
-    /// Максимальная доля доминирующего биома (AC1).
-    static let maxDominantShare: Double = 0.75
+    /// Максимальная доля доминирующего биома (AC1). BUG-008: снижен с 0.75 до 0.40.
+    static let maxDominantShare: Double = 0.40
+
+    /// Минимальная доля каждого биома (BUG-008: цель ≥5%).
+    static let minBiomeShare: Double = 0.05
 
     /// Число истоков рек. Берём топ-N пиков по высоте.
     static let riverSourceCount: Int = 5
@@ -95,31 +98,31 @@ struct BiomeClassifier {
     // MARK: - Шаг 1: квантильные пороги
 
     /// Считает пороги по квантилям, чтобы даже «плоский» seed дал ≥ 4 биома.
+    /// BUG-008: пороги пересмотрены так, чтобы каждый из 7 биомов занимал ≥5% карты.
     private static func computeThresholds(world: NoiseMap) -> Thresholds {
         let sortedH = world.height.sorted()
         let sortedT = world.temperature.sorted()
         let sortedM = world.humidity.sorted()
         let n = sortedH.count
 
-        // Море — bottom 25% высоты
-        let seaLevel      = quantile(sorted: sortedH, p: 0.25)
+        // Море — bottom 30% высоты (чуть выше для чёткой береговой линии, BUG-008)
+        let seaLevel      = quantile(sorted: sortedH, p: 0.30)
         // Камни — top 20% высоты (предгорье)
         let stoneLevel    = quantile(sorted: sortedH, p: 0.80)
         // Горы — top 10% высоты
         let mountainLevel = quantile(sorted: sortedH, p: 0.90)
 
-        // Жарко — top 35% температуры
-        let hotTemp       = quantile(sorted: sortedT, p: 0.65)
-        // Холодно — bottom 35% температуры (не используется отдельно, но для баланса)
-        let coldTemp      = quantile(sorted: sortedT, p: 0.35)
+        // Жарко — top 50% температуры (медиана; даёт больше клеток под desert/savanna)
+        let hotTemp       = quantile(sorted: sortedT, p: 0.50)
+        // Холодно — bottom 20% температуры (tundra → .stone biome)
+        let coldTemp      = quantile(sorted: sortedT, p: 0.20)
 
-        // Сухо — bottom 35% влажности
-        let dryHumidity   = quantile(sorted: sortedM, p: 0.35)
+        // Сухо — bottom 50% влажности (медиана; делает desert заметнее)
+        let dryHumidity   = quantile(sorted: sortedM, p: 0.50)
         // Влажно — top 40% влажности
         let wetHumidity   = quantile(sorted: sortedM, p: 0.60)
 
         _ = n
-        _ = coldTemp
 
         return Thresholds(
             seaLevel: seaLevel,
@@ -140,30 +143,50 @@ struct BiomeClassifier {
 
     // MARK: - Шаг 2: базовая классификация суши (O(N), детерминированно)
 
+    /// BUG-008: расширенная таблица биомов — все 7 case'ов получают ≥5% карты.
+    ///
+    /// Приоритет (сверху вниз):
+    ///   1. mountain  — h ≥ mountainLevel                      (~10%)
+    ///   2. stone     — h ≥ stoneLevel                         (~10%, предгорье)
+    ///   3. sea       — h < seaLevel (предварительно)          (~30%, flood-fill уберёт лужи)
+    ///   4. Суша (~50%): разбивается по t+m:
+    ///      a. stone   — cold tundra (t<coldTemp)              (~10% суши → ~5% карты)
+    ///      b. desert  — hot+dry (t≥hotTemp && m<dryHumidity)  (~25% суши → ~12.5% карты)
+    ///      c. forest  — wet (m≥wetHumidity)                   (~25% суши → ~12.5% карты)
+    ///      d. meadow  — дефолт (умеренные условия)            (~40% суши → ~20% карты)
+    ///
+    /// Ожидаемое распределение (типичный seed):
+    ///   sea≈30%  mountain≈10%  stone≈15%  desert≈12%  forest≈12%  meadow≈20%  river≈1%
     private static func classifyLand(world: NoiseMap, W: Int, thresholds t: Thresholds) -> [BiomeKind] {
         let n = W * W
         var cells = [BiomeKind](repeating: .meadow, count: n)
         for i in 0 ..< n {
-            let h = world.height[i]
+            let h    = world.height[i]
             let temp = world.temperature[i]
             let hum  = world.humidity[i]
 
             if h >= t.mountainLevel {
+                // Горные вершины
                 cells[i] = .mountain
             } else if h >= t.stoneLevel {
+                // Предгорье / каменистые склоны
                 cells[i] = .stone
             } else if h < t.seaLevel {
-                // предварительно помечаем как море; flood-fill потом отфильтрует «лужи»
+                // Кандидат в море; flood-fill отфильтрует «лужи»
                 cells[i] = .sea
             } else {
-                // суша: таблица (temperature, humidity)
-                if temp >= t.hotTemp && hum < t.dryHumidity {
+                // --- Суша: классификация по температуре + влажности ---
+                if temp < t.coldTemp {
+                    // Холодная тундра: переиспользуем .stone (каменистая холодная земля)
+                    cells[i] = .stone
+                } else if temp >= t.hotTemp && hum < t.dryHumidity {
+                    // Жарко + сухо → пустыня
                     cells[i] = .desert
-                } else if temp >= t.hotTemp && hum >= t.wetHumidity {
-                    cells[i] = .forest
                 } else if hum >= t.wetHumidity {
+                    // Высокая влажность → лес
                     cells[i] = .forest
                 } else {
+                    // Умеренные условия → луг (дефолт)
                     cells[i] = .meadow
                 }
             }
@@ -327,12 +350,32 @@ struct BiomeClassifier {
 
     // MARK: - Шаг 5: validateDiversity
 
+    /// BUG-008: проверяет разнообразие биомов. Бросает ошибку если:
+    ///   - уникальных биомов < minDiversity (7),
+    ///   - или доминирующий биом занимает > maxDominantShare (40%).
+    /// Дополнительно логирует предупреждение если любой биом < minBiomeShare (5%).
     private static func validateDiversity(cells: [BiomeKind], total: Int) throws {
         var counts: [BiomeKind: Int] = [:]
         for b in cells { counts[b, default: 0] += 1 }
         let unique = counts.count
         let dominantCount = counts.values.max() ?? 0
         let dominantShare = Double(dominantCount) / Double(total)
+
+        // Логируем распределение для диагностики (аналогично BUG-006 BiomeDistribution)
+        let distributionStr = BiomeKind.allCases.compactMap { kind -> String? in
+            guard let c = counts[kind] else { return nil }
+            let pct = Double(c) / Double(total) * 100.0
+            return "\(kind.rawValue):\(String(format: "%.1f", pct))%"
+        }.joined(separator: " ")
+        ErrorsLog.write("BiomeClassifier distribution [\(unique) kinds]: \(distributionStr)")
+
+        // Предупреждение если любой из 7 биомов < 5% (BUG-008 цель)
+        for kind in BiomeKind.allCases {
+            let share = Double(counts[kind] ?? 0) / Double(total)
+            if share < minBiomeShare {
+                ErrorsLog.write("BiomeClassifier WARNING: \(kind.rawValue) share \(String(format: "%.1f", share * 100))% < \(Int(minBiomeShare * 100))% target")
+            }
+        }
 
         if unique < minDiversity || dominantShare > maxDominantShare {
             throw BiomeClassifierError.insufficientDiversity(found: unique, dominantShare: dominantShare)
