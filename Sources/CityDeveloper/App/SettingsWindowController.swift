@@ -8,6 +8,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         settings: AppSettings,
         notesWatcher: NotesWatcher? = nil,
         gitWatcher: GitWatcher? = nil,
+        appDelegate: AppDelegate? = nil,
         onSave: @escaping () -> Void
     ) {
         if let w = window, w.isVisible {
@@ -20,7 +21,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             onSave: { [weak self] in onSave(); self?.window?.close() },
             onCancel: { [weak self] in self?.window?.close() },
             notesWatcher: notesWatcher,
-            gitWatcher: gitWatcher
+            gitWatcher: gitWatcher,
+            appDelegate: appDelegate
         )
         let host = NSHostingController(rootView: view)
         let w = NSWindow(contentViewController: host)

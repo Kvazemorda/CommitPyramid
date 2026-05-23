@@ -162,6 +162,69 @@ final class GameScene: SKScene {
         super.keyDown(with: event)
     }
 
+    // MARK: - BUG-005: Reset support
+
+    /// Clears all visual nodes and re-draws the city from the current engine state.
+    /// Called after AppDelegate.resetCity(replaySince:) rebuilds the engine and worldMap.
+    func resetScene() {
+        // Remove all children and rebuild from scratch.
+        world.removeAllChildren()
+        unitNodes.removeAll()
+        districtNodes.removeAll()
+        inspector = nil
+
+        lifeSim?.stop()
+        lifeSim = nil
+        citizenManager?.stop()
+        citizenManager = nil
+        biomeRenderer = nil
+
+        // Re-render biome tile map with the new worldMap.
+        if let noiseMap = worldMap,
+           let biomeMap = try? BiomeClassifier.classify(world: noiseMap) {
+            let renderer = BiomeRenderer(map: biomeMap)
+            renderer.attach(to: world)
+            biomeRenderer = renderer
+            engine?.biomeReader = biomeMap
+        }
+
+        let watermark = SKLabelNode(text: "CityDeveloper")
+        watermark.fontName = "Helvetica-Bold"
+        watermark.fontSize = 14
+        watermark.fontColor = Palette.inkDark.withAlphaComponent(0.35)
+        watermark.position = CGPoint(x: 0, y: -10)
+        watermark.zPosition = -500
+        world.addChild(watermark)
+
+        // Draw any existing state (likely empty after reset, but future-safe).
+        if let engine {
+            for project in engine.state.projects.values {
+                drawDistrictMarker(for: project)
+            }
+            for unit in engine.state.units.values {
+                if let project = engine.state.projects[unit.projectId] {
+                    drawUnit(unit, project: project)
+                }
+            }
+        }
+
+        // Restart simulation managers.
+        let sim = LifeSimulationManager()
+        sim.engine = engine
+        sim.scene = self
+        lifeSim = sim
+        sim.start()
+
+        let cm = CitizenManager()
+        cm.engine = engine
+        cm.scene = self
+        citizenManager = cm
+        run(SKAction.sequence([
+            SKAction.wait(forDuration: 1.5),
+            SKAction.run { [weak cm] in cm?.start() }
+        ]))
+    }
+
     func placeUnit(_ unit: UnitState, project: ProjectState) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.didAttach else { return }

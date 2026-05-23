@@ -165,6 +165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 settings: self.appSettings,
                 notesWatcher: self.notesWatcher,
                 gitWatcher: self.gitWatcher,
+                appDelegate: self,
                 onSave: { self.applySettings() }
             )
         }
@@ -195,6 +196,99 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.informativeText = alertText
             alert.runModal()
         }
+    }
+
+    // MARK: - BUG-005: Reset & Rebuild
+
+    /// Сбрасывает весь state города и запускает re-scan всех источников начиная с `replaySince`.
+    /// Вызывается из SettingsView после подтверждения пользователя.
+    @MainActor
+    func resetCity(replaySince: Date) {
+        // 1. Stop scheduler and decay engine.
+        catchUpScheduler?.stop()
+        decayEngine?.stop()
+
+        let fm = FileManager.default
+        let dataDir = appSettings.dataDirectory
+
+        // 2. Delete state files.
+        let filesToDelete: [URL] = [
+            dataDir.appendingPathComponent("events.jsonl"),
+            dataDir.appendingPathComponent("state.json"),
+            AppPaths.catchupState,
+            dataDir.appendingPathComponent("worldmap.json"),
+        ]
+        for url in filesToDelete {
+            try? fm.removeItem(at: url)
+        }
+
+        // 3. Delete notes-state directory contents.
+        let notesStateDir = AppPaths.appSupport.appendingPathComponent("notes-state", isDirectory: true)
+        if let items = try? fm.contentsOfDirectory(at: notesStateDir, includingPropertiesForKeys: nil) {
+            for item in items { try? fm.removeItem(at: item) }
+        }
+
+        // 4. Set a new random world seed so the map regenerates with fresh biomes.
+        let newSeed = Int64(bitPattern: UInt64.random(in: .min ... .max))
+        WorldSeedStore.saveSeed(newSeed)
+
+        // 5. Rebuild engine on a clean slate.
+        let snapshotStore = SnapshotStore(url: dataDir.appendingPathComponent("state.json"))
+        engine = CityEngine(
+            eventLog: EventLog(fileURL: dataDir.appendingPathComponent("events.jsonl")),
+            snapshotStore: snapshotStore
+        )
+        decayEngine.cityEngine = engine
+
+        // 6. Rebuild world map with the new seed (file deleted → provider regenerates).
+        worldMapProvider = WorldMapProvider(
+            seedStore: WorldSeedStore.self,
+            mapStore: WorldMapStore(url: dataDir.appendingPathComponent("worldmap.json"))
+        )
+
+        // 7. Reconnect engine callbacks (same closures as in applicationDidFinishLaunching).
+        engine.onUnitBuilt = { [weak self] unit, project in
+            self?.scene?.placeUnit(unit, project: project)
+        }
+        engine.onProjectCreated = { [weak self] project in
+            self?.scene?.markDistrict(project: project)
+        }
+        engine.onDecayChanged = { [weak self] projectId in
+            self?.scene?.applyDecayToProject(projectId)
+        }
+        engine.onProjectRuinsCleared = { [weak self] oldProjectId, newProject in
+            self?.scene?.handleRuinsCleared(oldProjectId: oldProjectId, newProject: newProject)
+        }
+        engine.onProjectStageChanged = { [weak self] projectId, oldStage, newStage in
+            self?.scene?.handleProjectStageChanged(projectId: projectId, oldStage: oldStage, newStage: newStage)
+        }
+        engine.onUnitEvolved = { [weak self] uid, from, to, projectId in
+            self?.scene?.handleUnitEvolved(unitId: uid, from: from, to: to, projectId: projectId)
+        }
+
+        // 8. Reconnect scene to new engine and new world map, then reload.
+        scene.engine = engine
+        scene.worldMap = worldMapProvider.map
+        scene.resetScene()
+
+        // 9. Pre-seed lastCheckTs = replaySince before registering sources so the
+        //    immediate scan (triggered inside register()) picks up events from that date.
+        var freshState = CatchUpState(version: CatchUpState.currentVersion, sources: [:])
+        for id in [notesWatcher.id, gitWatcher.id] {
+            freshState.sources[id] = .init(lastCheckTs: replaySince)
+        }
+        freshState.save()
+
+        // 10. Rebuild CatchUpScheduler with the new engine and pre-seeded state.
+        let scheduler = CatchUpScheduler(engine: engine, appSettings: appSettings)
+        notesWatcher.engine = engine
+        gitWatcher.engine = engine
+        scheduler.register(notesWatcher)
+        scheduler.register(gitWatcher)
+
+        scheduler.start()
+        catchUpScheduler = scheduler
+        decayEngine.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

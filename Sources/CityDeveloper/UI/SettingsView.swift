@@ -17,19 +17,26 @@ struct SettingsView: View {
     weak var notesWatcher: NotesWatcher?
     /// Optional git watcher reference for hot-registration of new repos.
     weak var gitWatcher: GitWatcher?
+    /// Optional AppDelegate reference for Reset & Rebuild.
+    weak var appDelegate: AppDelegate?
+
+    @State private var replaySinceDate: Date = Calendar.current.date(
+        byAdding: .month, value: -3, to: Date()) ?? Date()
 
     init(
         settings: AppSettings,
         onSave: @escaping () -> Void,
         onCancel: @escaping () -> Void,
         notesWatcher: NotesWatcher? = nil,
-        gitWatcher: GitWatcher? = nil
+        gitWatcher: GitWatcher? = nil,
+        appDelegate: AppDelegate? = nil
     ) {
         self.settings = settings
         self.onSave = onSave
         self.onCancel = onCancel
         self.notesWatcher = notesWatcher
         self.gitWatcher = gitWatcher
+        self.appDelegate = appDelegate
         _draftTasksPath = State(initialValue: settings.tasksJsonlPath)
         _draftDataDir = State(initialValue: settings.dataDirectory)
         _draftKeyCode = State(initialValue: settings.hotkeyKeyCode)
@@ -106,6 +113,22 @@ struct SettingsView: View {
                     onRepoRemoved: { [weak gitWatcher] id   in gitWatcher?.unregister(id: id) }
                 )
 
+                GroupBox("Reset & Rebuild") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        DatePicker("Replay events since:",
+                                   selection: $replaySinceDate,
+                                   displayedComponents: [.date])
+                        Button("Reset city and rebuild") {
+                            confirmReset()
+                        }
+                        .foregroundStyle(.red)
+                        Text("This will erase the current city and re-import all completed tasks and commits from your configured sources since the chosen date.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                }
+
                 HStack {
                     Spacer()
                     Button("Отмена") { onCancel() }
@@ -168,6 +191,22 @@ struct SettingsView: View {
         settings.hotkeyModifiers = draftModifiers
         settings.save()
         onSave()
+    }
+
+    private func confirmReset() {
+        let dateStr = DateFormatter.localizedString(from: replaySinceDate,
+                                                    dateStyle: .medium,
+                                                    timeStyle: .none)
+        let alert = NSAlert()
+        alert.messageText = "Reset city?"
+        alert.informativeText = "This will erase the current city and rebuild from all event sources since \(dateStr). Continue?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Reset")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+        appDelegate?.resetCity(replaySince: replaySinceDate)
+        onCancel() // Close settings window after reset.
     }
 
     private func hotkeyDisplay(keyCode: UInt32, modifiers: UInt32) -> String {
