@@ -62,6 +62,19 @@ final class GameScene: SKScene {
         if let noiseMap = worldMap {
             do {
                 let biomeMap = try BiomeClassifier.classify(world: noiseMap)
+
+                // BUG-006: логируем распределение биомов для диагностики тюнинга классификатора.
+                let dist = biomeMap.cells.reduce(into: [BiomeKind: Int]()) { $0[$1, default: 0] += 1 }
+                let total = biomeMap.cells.count
+                let distStr = BiomeKind.allCases
+                    .compactMap { b -> String? in
+                        guard let cnt = dist[b] else { return nil }
+                        let pct = String(format: "%.1f%%", Double(cnt) / Double(total) * 100)
+                        return "\(b.rawValue):\(pct)"
+                    }
+                    .joined(separator: " ")
+                ErrorsLog.write("BiomeDistribution [\(dist.count) kinds]: \(distStr)")
+
                 let renderer = BiomeRenderer(map: biomeMap)
                 renderer.attach(to: world)
                 biomeRenderer = renderer

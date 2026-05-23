@@ -18,17 +18,17 @@ enum Palette {
     /// Тёмное дерево — «древняя» палитра: брёвна, доски, балки.
     static let warmBrown  = SKColor(red: 0.48, green: 0.30, blue: 0.16, alpha: 1.0)
 
-    // MARK: - Биомные токены (TASK-028)
-    /// Тёмная лесная зелень — биом «Лес».
-    static let forestGreen  = SKColor(red: 0.18, green: 0.32, blue: 0.18, alpha: 1.0)
-    /// Серый камень — биом «Горы».
-    static let mountainGrey = SKColor(red: 0.45, green: 0.43, blue: 0.40, alpha: 1.0)
-    /// Серо-охровый камень — биом «Камни» (предгорье).
-    static let rockBrown    = SKColor(red: 0.58, green: 0.50, blue: 0.40, alpha: 1.0)
-    /// Голубая вода — биом «Река».
-    static let riverBlue    = SKColor(red: 0.40, green: 0.62, blue: 0.78, alpha: 1.0)
-    /// Сине-зелёная вода — биом «Море».
-    static let seaTeal      = SKColor(red: 0.25, green: 0.45, blue: 0.58, alpha: 1.0)
+    // MARK: - Биомные токены (TASK-028, updated BUG-006)
+    /// Насыщенная лесная зелень — биом «Лес». Ярче nileGreen для визуальной различимости.
+    static let forestGreen  = SKColor(red: 0.13, green: 0.45, blue: 0.15, alpha: 1.0)
+    /// Холодный серый — биом «Горы». Светлее rockBrown для чёткого контраста.
+    static let mountainGrey = SKColor(red: 0.62, green: 0.62, blue: 0.65, alpha: 1.0)
+    /// Тёплый коричнево-бежевый — биом «Камни» (предгорье).
+    static let rockBrown    = SKColor(red: 0.68, green: 0.54, blue: 0.36, alpha: 1.0)
+    /// Яркая голубая вода — биом «Река».
+    static let riverBlue    = SKColor(red: 0.30, green: 0.60, blue: 0.90, alpha: 1.0)
+    /// Насыщенный морской синий — биом «Море».
+    static let seaTeal      = SKColor(red: 0.15, green: 0.40, blue: 0.68, alpha: 1.0)
 
     // Semantic tokens
     static let success = NSColor(red: 0.290, green: 0.561, blue: 0.243, alpha: 1.0)
