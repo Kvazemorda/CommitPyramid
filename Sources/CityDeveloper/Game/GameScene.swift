@@ -65,6 +65,8 @@ final class GameScene: SKScene {
                 let renderer = BiomeRenderer(map: biomeMap)
                 renderer.attach(to: world)
                 biomeRenderer = renderer
+                // TASK-035 F-16: передаём биом-карту в CityEngine для UnitPlanner.
+                engine?.biomeReader = biomeMap
             } catch {
                 ErrorsLog.write("GameScene: BiomeClassifier failed (\(error)) — fallback to plain background")
             }

@@ -28,6 +28,10 @@ final class CityEngine: ObservableObject {
     /// Параметры: unitId, fromKind, toKind, projectId.
     var onUnitEvolved: ((UUID, UnitKind, UnitKind, String) -> Void)?
 
+    /// TASK-035 F-16: биом-карта для передачи в UnitPlanner.
+    /// Задаётся из GameScene после построения BiomeMap (опционально; nil → uniform weights).
+    var biomeReader: BiomeMapReader?
+
     private var periodicSnapshotTimer: DispatchSourceTimer?
 
     init(eventLog: EventLog = EventLog(), snapshotStore: SnapshotStore = SnapshotStore()) {
@@ -255,9 +259,12 @@ final class CityEngine: ObservableObject {
         let infraCount       = projectUnits.filter { $0.kind.category == .infrastructure }.count
         let productionCount  = projectUnits.filter { $0.kind.category == .production }.count
         let socialCount      = projectUnits.filter { $0.kind.category == .social }.count
+        // TASK-035 F-16: передаём биом клетки квартала (nil → uniform, back-compat).
+        let districtBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
         let kind = unitPlanner.nextUnitKind(
             forTaskIndex: project.taskCount,
             stage: project.stage,
+            biome: districtBiome,
             residentialCount: residentialCount,
             wellCount: wellCount,
             infraCount: infraCount,
