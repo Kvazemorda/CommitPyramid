@@ -664,4 +664,4 @@ _Сложность: middle_ (определит лид)
 - Исполнитель: sonnet
 - Завершена: 2026-05-23
 - Code-review: approved (sonnet, inline)
-- Коммит: —
+- Коммит: ecd6520 (GameScene: 07bcd5c)
