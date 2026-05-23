@@ -163,10 +163,11 @@ _Это технический контракт между внешним кро
 | `decay_tick`    | `DecayEngine` тик подъёма уровня decay                   | nil                       |
 | `fire`          | переход decay 2→3 (визуализация горения)                 | nil                       |
 | `ruins_cleared` | (зарезервирован; пока не пишется отдельно)               | nil                       |
+| `unit_evolved`  | визуальная эволюция юнита по порогу F-16                 | `<uid>\|<from>\|<to>`     |
 
 ### Порядок для одной задачи (нормативный)
 
-`task_completed` → (`restore` опц.) → `unit_built` → (`stage_up` опц.)
+`task_completed` → (`restore` опц.) → `unit_built` → (`unit_evolved` × N опц.) → (`stage_up` опц.)
 
 Все четыре события пишутся в рамках одного вызова `applyTaskCompleted` (live-тик).
 В `silent: true`-ветке (replay из лога / snapshot tail) **новых записей не делается**:

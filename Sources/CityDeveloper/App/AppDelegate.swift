@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController!
     private var journalWindowController: JournalWindowController!
     private var catchUpScheduler: CatchUpScheduler?
+    private var notesWatcher: NotesWatcher!
     private var worldMapProvider: WorldMapProvider!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -64,6 +65,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Callback срабатывает только при live-тике (silent=false в CityEngine).
         engine.onProjectStageChanged = { [weak self] projectId, oldStage, newStage in
             self?.scene?.handleProjectStageChanged(projectId: projectId, oldStage: oldStage, newStage: newStage)
+        }
+        // TASK-034 F-16: визуальная эволюция юнита по порогу.
+        // Callback срабатывает только при live-тике (silent=false в CityEngine).
+        engine.onUnitEvolved = { [weak self] uid, from, to, projectId in
+            self?.scene?.handleUnitEvolved(unitId: uid, from: from, to: to, projectId: projectId)
         }
 
         bridge = SceneBridge()
@@ -122,22 +128,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watcher = TasksJsonlWatcher(fileURL: appSettings.tasksJsonlPath, engine: engine)
         watcher.start()
 
-        // F-20: catch-up scheduler (watcher infrastructure for future F-18/F-19).
+        // F-20: catch-up scheduler (watcher infrastructure for F-18/F-19).
         // In smoke mode (CITY_SMOKE_CATCHUP=1) a mock source is registered.
         let scheduler = CatchUpScheduler(engine: engine, appSettings: appSettings)
         if ProcessInfo.processInfo.environment["CITY_SMOKE_CATCHUP"] == "1" {
             let mock = MockEventSource(engine: engine)
             scheduler.register(mock)
         }
+
+        // F-18: Notes/folder watcher. Register persisted sources, then register
+        // the watcher itself with CatchUpScheduler for periodic scans.
+        notesWatcher = NotesWatcher()
+        notesWatcher.engine = engine
+        for spec in appSettings.notesSources {
+            notesWatcher.register(spec)
+        }
+        scheduler.register(notesWatcher)
+
         scheduler.start()
         catchUpScheduler = scheduler
 
         settingsWindowController = SettingsWindowController()
         statusBarController.onSettingsRequested = { [weak self] in
             guard let self = self else { return }
-            self.settingsWindowController.show(settings: self.appSettings, onSave: {
-                self.applySettings()
-            })
+            self.settingsWindowController.show(
+                settings: self.appSettings,
+                notesWatcher: self.notesWatcher,
+                onSave: { self.applySettings() }
+            )
         }
 
         decayEngine.start()

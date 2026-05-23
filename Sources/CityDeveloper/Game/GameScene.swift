@@ -310,6 +310,57 @@ final class GameScene: SKScene {
         // и продолжает накладываться поверх нового building после swap — это ожидаемо.
     }
 
+    // MARK: - Unit evolution visual (TASK-034 F-16)
+
+    /// Вызывается из AppDelegate при live-тике эволюции юнита.
+    /// При catch-up (replayFromLog) callback не срабатывает — drawUnit уже рисует с актуальным kind.
+    ///
+    /// Edge cases:
+    /// - Руина (ruinNode) — skip, визуал руины приоритетен.
+    /// - Legacy-нода без name="building" — skip.
+    /// - state.units[unitId] уже содержит новый kind (apply применился до callback).
+    func handleUnitEvolved(unitId: UUID, from: UnitKind, to: UnitKind, projectId: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.didAttach,
+                  let engine = self.engine,
+                  let unit = engine.state.units[unitId],
+                  let node = self.unitNodes[unitId] else { return }
+            self.swapEvolvedSprite(in: node, unit: unit)
+        }
+    }
+
+    /// Заменяет building-child в ноде юнита на kind-specific спрайт для нового kind.
+    /// Cross-fade ≤0.5 сек, механизм идентичен swapStageSprite (F-08).
+    /// Намеренный дубликат ~15 строк — см. комментарий в техразборе TASK-034:
+    /// рефакторинг общего helper'а отложен до TASK-036, чтобы не трогать TASK-019-код.
+    private func swapEvolvedSprite(in node: SKNode, unit: UnitState) {
+        // Guard: руина — skip, визуал руины приоритетен (decay 4).
+        if node.childNode(withName: "ruinNode") != nil { return }
+
+        // Guard: нет building-child — legacy-нода без name= (создана старым makeNode).
+        guard let oldBuilding = node.childNode(withName: "building") else { return }
+
+        // Строим новый building по актуальному unit.kind (уже содержит to-kind после apply).
+        let newBuilding = UnitSprites.makeKindBuilding(unit: unit, stage: unit.tier)
+        newBuilding.name = "building"
+        newBuilding.alpha = 0
+        node.addChild(newBuilding)
+
+        // Параллельный кросс-фейд: fadeOut старого + removeFromParent, fadeIn нового.
+        // Общее визуальное окно ≤0.5 сек (AC F-16).
+        let fadeOut = SKAction.sequence([
+            SKAction.fadeOut(withDuration: 0.5),
+            SKAction.removeFromParent()
+        ])
+        fadeOut.timingMode = .easeOut
+        let fadeIn = SKAction.fadeIn(withDuration: 0.5)
+        fadeIn.timingMode = .easeOut
+        oldBuilding.run(fadeOut)
+        newBuilding.run(fadeIn)
+        // Примечание: decay-overlay живёт на parent-контейнере и остаётся поверх
+        // нового building — ожидаемое поведение (декай не сбрасывается эволюцией).
+    }
+
     // MARK: - Decay visual
 
     /// Вызывается из AppDelegate через engine.onDecayChanged.

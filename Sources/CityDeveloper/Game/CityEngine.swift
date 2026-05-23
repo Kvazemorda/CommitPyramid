@@ -24,6 +24,9 @@ final class CityEngine: ObservableObject {
     /// oldProjectId — projectId удалённого District-руин; newProject — свежесозданный ProjectState.
     /// Анимация расчистки — чисто визуальная (не event-sourced), запускается в GameScene.
     var onProjectRuinsCleared: ((String, ProjectState) -> Void)?
+    /// TASK-034 F-16: вызывается при эволюции юнита (live-тик, !silent).
+    /// Параметры: unitId, fromKind, toKind, projectId.
+    var onUnitEvolved: ((UUID, UnitKind, UnitKind, String) -> Void)?
 
     private var periodicSnapshotTimer: DispatchSourceTimer?
 
@@ -58,6 +61,17 @@ final class CityEngine: ObservableObject {
         lastSnapshotEventIndex += 1
         eventsSinceSnapshot += 1
         if eventsSinceSnapshot >= 500 { saveSnapshot() }
+    }
+
+    /// Idempotent version of `ingestTaskCompletion` for F-18 Notes Watcher.
+    ///
+    /// Checks `events` for an existing event with the same non-nil `source` key
+    /// before appending. If a duplicate is found, the call is a silent no-op.
+    /// Used by `NotesWatcher` (and future `GitWatcher`); `TasksJsonlWatcher`
+    /// continues to call `ingestTaskCompletion` directly.
+    func ingestTaskCompletionIfUnique(project: String, title: String, taskId: String?, source: String, ts: Date) {
+        guard !events.contains(where: { $0.source == source }) else { return }
+        ingestTaskCompletion(project: project, title: title, taskId: taskId, source: source, ts: ts)
     }
 
     func ingestTaskCompletion(project: String, title: String, taskId: String?, source: String?, ts: Date) {
@@ -151,6 +165,18 @@ final class CityEngine: ObservableObject {
             if !silent { onDecayChanged?(event.project) }
         case .unitBuilt, .stageUp, .ruinsCleared:
             break
+        case .unitEvolved:
+            // TASK-034: меняем kind юнита в state (и при silent replay, и при live).
+            guard let (uid, fromKind, toKind) = GameEvent.unitEvolvedPayload(from: event.title) else {
+                ErrorsLog.write("unit_evolved: не удалось распарсить title '\(event.title ?? "nil")' — пропускаем")
+                break
+            }
+            guard state.units[uid] != nil else {
+                ErrorsLog.write("unit_evolved: unitId \(uid) не найден в state — пропускаем")
+                break
+            }
+            state.units[uid]?.kind = toKind
+            if !silent { onUnitEvolved?(uid, fromKind, toKind, event.project) }
         }
     }
 
@@ -277,8 +303,11 @@ final class CityEngine: ObservableObject {
         }
 
         if !silent {
-            // Порядок в events.jsonl: task_completed → (restore?) → unit_built → (stage_up?).
+            // Порядок в events.jsonl: task_completed → (restore?) → unit_built → (unit_evolved × N опц.) → (stage_up?).
             appendSystemEvent(.unitBuilt, project: projectKey, title: unit.kind.label)
+            // TASK-034 F-16: repeat-обёртка для каскадов (Землянка → Лачуга → Дом в один тик).
+            // На каждой итерации ≥ 1 эволюция; при changed == false — выходим.
+            repeat { } while applyEvolutionsIfReady(projectKey: projectKey)
             if newStage > oldStage {
                 appendSystemEvent(.stageUp, project: projectKey, title: "S\(oldStage) → S\(newStage)")
             }
@@ -300,6 +329,53 @@ final class CityEngine: ObservableObject {
                 onProjectStageChanged?(projectKey, oldStage, newStage)
             }
         }
+    }
+
+    // MARK: - TASK-034: Evolution logic
+
+    /// Проверяет квартал projectKey на «созревшие» эволюционные группы и применяет
+    /// ровно один порог (threshold штук) самых старых юнитов данного kind.
+    /// Возвращает true, если была хотя бы одна эволюция (для repeat-while каскада).
+    ///
+    /// Порядок events.jsonl: unit_built → unit_evolved × N → stage_up?
+    /// Пропускает эволюцию если evolvesTo.minStage > project.stage (AC edge case).
+    @discardableResult
+    private func applyEvolutionsIfReady(projectKey: String) -> Bool {
+        guard let project = state.projects[projectKey] else { return false }
+
+        // Все юниты квартала (только живые — без decayLevel == 4).
+        let projectUnits = state.units.values.filter { $0.projectId == projectKey }
+
+        // Группируем по kind.
+        let grouped = Dictionary(grouping: projectUnits, by: { $0.kind })
+
+        var changed = false
+
+        for (kind, units) in grouped {
+            // Пропускаем если нет эволюции.
+            guard let targetKind = kind.evolvesTo,
+                  let threshold = kind.evolutionThreshold else { continue }
+            // Порог не достигнут.
+            guard units.count >= threshold else { continue }
+            // Цель недоступна на текущей стадии квартала.
+            guard targetKind.minStage <= project.stage else { continue }
+
+            // Берём ровно `threshold` старейших юнитов: taskTs asc → id asc (детерминировано).
+            let oldest = units
+                .sorted { lhs, rhs in
+                    if lhs.taskTs != rhs.taskTs { return lhs.taskTs < rhs.taskTs }
+                    return lhs.id.uuidString < rhs.id.uuidString
+                }
+                .prefix(threshold)
+
+            for unit in oldest {
+                let title = "\(unit.id.uuidString)|\(kind.rawValue)|\(targetKind.rawValue)"
+                appendSystemEvent(.unitEvolved, project: projectKey, title: title)
+            }
+            changed = true
+        }
+
+        return changed
     }
 
     /// Детерминированный выбор руины для нового проекта (F-06).

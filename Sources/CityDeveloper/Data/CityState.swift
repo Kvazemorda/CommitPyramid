@@ -4,7 +4,8 @@ import CoreGraphics
 struct UnitState: Codable {
     let id: UUID
     let projectId: String
-    let kind: UnitKind
+    /// TASK-034: var (был let) — нужен для эволюции kind при apply(.unitEvolved).
+    var kind: UnitKind
     let position: GridPoint
     var tier: Int
     var decayLevel: Int  // зарезервировано для per-unit decay (сейчас decay хранится в ProjectState)

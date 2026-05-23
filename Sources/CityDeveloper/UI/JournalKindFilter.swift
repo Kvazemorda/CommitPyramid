@@ -33,6 +33,7 @@ extension GameEvent.Kind {
         case .fire:          return "flame"
         case .restore:       return "arrow.uturn.up"
         case .ruinsCleared:  return "trash.slash"
+        case .unitEvolved:   return "arrow.triangle.2.circlepath"  // TASK-034
         }
     }
 
@@ -46,6 +47,7 @@ extension GameEvent.Kind {
         case .fire:          return "Пожар"
         case .restore:       return "Восстановление"
         case .ruinsCleared:  return "Снос руин"
+        case .unitEvolved:   return "Эволюция юнита"  // TASK-034
         }
     }
 }
