@@ -189,3 +189,57 @@ state-агрегаты (`taskCount`, `stage`, `unitIds`) выводятся из
 - старый бинарь, читающий лог с новым `kind`, не падает, но теряет такие строки;
 - при добавлении нового `kind` авторы обязаны обновлять `LogFormat.md` и
   выдерживать совместимость через `apply = break` либо отдельную no-op-ветку.
+
+---
+
+## Совместимость 12 → 50 юнитов (TASK-037)
+
+_Добавлено 2026-05-23_
+
+### Гарантии rawValue
+
+Старые 12 rawValue (`shack`, `house`, `villa`, `well`, `road`, `warehouse`,
+`workshop`, `raw`, `market`, `forum`, `temple`, `obelisk`) **гарантированно валидны
+во всех будущих версиях**. Не переименовывать и не перемещать в другие case'ы.
+
+- `temple` и `obelisk` остаются в категории `.social` до TASK-035 (переклассификация
+  в `.religious` произойдёт одновременно с переписыванием `UnitPlanner`).
+- Тест `testRawValuesStable12()` в `LegacyStateMigrationTests.swift` является
+  защитной сеткой от случайного переименования.
+
+### Совместимость state.json
+
+- Старые snapshot'ы (`StateSnapshot.version == 1`) читаются новым кодом as-is;
+  bump версии **не происходит** при расширении каталога `UnitKind`.
+- Версия `currentVersion` повышается только при несовместимом изменении структуры
+  `CityState` / `ProjectState` / `UnitState`.
+- При добавлении новых полей в эти структуры — поля должны быть `Optional` или
+  иметь дефолт (например, через кастомный `init(from:)` с `decodeIfPresent`).
+- Неизвестный `UnitKind` rawValue в snapshot → `JSONDecoder` не может декодировать
+  весь `StateSnapshot` → `SnapshotStore.load()` возвращает `nil` и пишет в
+  `errors.log` → движок идёт по ветке full replay из `events.jsonl`.
+  Частичная устойчивость (пропуск одного битого юнита) — в backlog как
+  «partial-snapshot robustness».
+
+### Совместимость events.jsonl
+
+- `UnitKind` **не сериализуется в `events.jsonl`**. В поле `title` события
+  `unit_built` хранится только человекочитаемый `UnitKind.label` (русское
+  название), а не rawValue. Поэтому расширение каталога с 12 до 50 case'ов
+  **не требует миграции событийного лога**.
+- При full replay `UnitKind` пересчитывается планировщиком (`UnitPlanner`)
+  текущей версии — это архитектурное свойство, а не баг. Full replay после
+  обновления приложения может дать другие kind'ы, чем были в оригинальном state
+  (это допустимо и задокументировано).
+
+### Диагностика
+
+`SnapshotStore.load()` различает три сценария:
+
+| Ситуация | Запись в errors.log | Действие |
+|----------|---------------------|----------|
+| Файл не существует | Нет | Вернуть nil → full replay |
+| Файл существует, но не читается | Да | Вернуть nil → full replay |
+| Файл читается, decode упал (неизвестный rawValue, schema mismatch) | Да + детали ошибки | Вернуть nil → full replay |
+| Версия snapshot ≠ currentVersion | Да | Вернуть nil → full replay |
+| Всё ОК | Нет | Вернуть snapshot |
