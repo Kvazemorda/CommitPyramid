@@ -1,5 +1,6 @@
 import SpriteKit
 import AppKit
+import Carbon.HIToolbox
 
 final class GameScene: SKScene {
 
@@ -18,6 +19,9 @@ final class GameScene: SKScene {
     private var unitNodes: [UUID: SKNode] = [:]
     private var districtNodes: [String: SKNode] = [:]
 
+    // MARK: - Debug overlay (TASK-025)
+    private var debugOverlayEnabled: Bool = false
+
     private var inspector: SKNode?
     private static let unitIdKey = "unitId"
     /// Ключ userData для хранения projectId ноды юнита.
@@ -28,17 +32,26 @@ final class GameScene: SKScene {
     var citizenManager: CitizenManager?
 
     override func didMove(to view: SKView) {
-        backgroundColor = Palette.skyDay
+        // За краями тайл-карты — тот же цвет травы (edge case: pan/zoom-out за границу)
+        backgroundColor = Palette.nileGreen
         scaleMode = .resizeFill
 
         camera = cameraNode
         cameraNode.position = .zero
         addChild(cameraNode)
 
-        let lawn = SKSpriteNode(color: Palette.nileGreen, size: CGSize(width: 8000, height: 8000))
-        lawn.position = .zero
-        lawn.zPosition = -1000
-        world.addChild(lawn)
+        // TASK-025: изометрическая тайл-карта 256×256 вместо плоского SKSpriteNode.
+        // Текстура и тайл-сет кэшированы в IsoTileFactory — не пересоздаются при повторном
+        // открытии окна. tileMap не имеет strong-ref на self → нет retain-cycle.
+        let tileMap = SKTileMapNode(
+            tileSet: IsoTileFactory.isometricGrassSet,
+            columns: 256, rows: 256,
+            tileSize: CGSize(width: IsoTileFactory.tileWidth, height: IsoTileFactory.tileHeight)
+        )
+        tileMap.position = .zero
+        tileMap.zPosition = -1000
+        tileMap.fill(with: IsoTileFactory.isometricGrassSet.tileGroups.first)
+        world.addChild(tileMap)
 
         addChild(world)
 
@@ -89,6 +102,30 @@ final class GameScene: SKScene {
         ) { [weak view] _ in
             view?.isPaused = true
         }
+
+        // TASK-025: debug overlay через env-флаг (CITY_DEBUG_OVERLAY=1)
+        if ProcessInfo.processInfo.environment["CITY_DEBUG_OVERLAY"] != nil {
+            setDebugOverlay(enabled: true)
+        }
+    }
+
+    // MARK: - Debug overlay toggle (TASK-025)
+
+    private func setDebugOverlay(enabled: Bool) {
+        debugOverlayEnabled = enabled
+        view?.showsFPS = enabled
+        view?.showsDrawCount = enabled
+        view?.showsNodeCount = enabled
+    }
+
+    /// Хоткей ⌘⌥F — toggle debug overlay (FPS / drawCount / nodeCount).
+    override func keyDown(with event: NSEvent) {
+        if Int(event.keyCode) == kVK_ANSI_F,
+           event.modifierFlags.contains([.command, .option]) {
+            setDebugOverlay(enabled: !debugOverlayEnabled)
+            return
+        }
+        super.keyDown(with: event)
     }
 
     func placeUnit(_ unit: UnitState, project: ProjectState) {
@@ -514,5 +551,63 @@ final class GameScene: SKScene {
     /// Возвращает корневую ноду юнита по UUID (для LifeSimulationManager).
     func unitNode(for id: UUID) -> SKNode? {
         unitNodes[id]
+    }
+
+    // MARK: - Bench (TASK-025)
+
+    /// Спавнит ровно `count` синтетических юнитов в радиусе 60 тайлов от центра.
+    /// Детерминирован при одинаковом seed. Юниты НЕ попадают в engine.state — чисто визуальная нагрузка.
+    func spawnBenchUnits(count: Int, seed: UInt64 = 42) {
+        guard didAttach else { return }
+        var rng = SeededGenerator(seed: seed)
+        let kinds = UnitKind.allCases
+        let stages = [1, 2, 3, 4, 5]
+        let benchProject = ProjectState(
+            id: "__bench__", name: "Bench",
+            createdAt: Date(), lastActivityAt: Date(),
+            taskCount: count, stage: 3, decayLevel: 0,
+            lastDecayLogged: 0, districtOrigin: GridPoint(x: 0, y: 0),
+            unitIds: []
+        )
+        for _ in 0..<count {
+            let x = rng.nextInt(in: -60...60)
+            let y = rng.nextInt(in: -60...60)
+            let kind = kinds[rng.nextIndex(upTo: kinds.count)]
+            let tier = stages[rng.nextIndex(upTo: stages.count)]
+            let unit = UnitState(
+                id: UUID(), projectId: benchProject.id,
+                kind: kind, position: GridPoint(x: x, y: y),
+                tier: tier, decayLevel: 0,
+                taskTitle: nil, taskTs: Date(), taskSource: "bench"
+            )
+            drawUnit(unit, project: benchProject)
+        }
+    }
+}
+
+// MARK: - SeededGenerator (TASK-025)
+
+/// Минимальный LCG-генератор для детерминированного bench-режима.
+/// Не использует arc4random — одинаковый seed даёт одинаковую последовательность.
+fileprivate struct SeededGenerator {
+    private var state: UInt64
+
+    init(seed: UInt64) {
+        self.state = seed
+    }
+
+    mutating func next() -> UInt64 {
+        // LCG параметры (Knuth): m=2^64, a=6364136223846793005, c=1442695040888963407
+        state = state &* 6364136223846793005 &+ 1442695040888963407
+        return state
+    }
+
+    mutating func nextInt(in range: ClosedRange<Int>) -> Int {
+        let span = UInt64(range.upperBound - range.lowerBound + 1)
+        return range.lowerBound + Int(next() % span)
+    }
+
+    mutating func nextIndex(upTo count: Int) -> Int {
+        Int(next() % UInt64(count))
     }
 }
