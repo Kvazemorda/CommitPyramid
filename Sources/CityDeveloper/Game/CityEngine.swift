@@ -233,8 +233,13 @@ final class CityEngine: ObservableObject {
                 ruinsClearedFrom = oldProjectId
             } else {
                 // Fallback: стандартная спираль от центра (нет руин на карте).
-                origin = districtPlanner.allocateNextOrigin(currentIndex: state.nextDistrictIndex)
-                state.nextDistrictIndex += 1
+                // BUG-009: передаём biomeReader — allocateNextOrigin пропустит водные клетки.
+                let allocated = districtPlanner.allocateNextOrigin(
+                    currentIndex: state.nextDistrictIndex,
+                    biomeReader: biomeReader
+                )
+                origin = allocated.origin
+                state.nextDistrictIndex = allocated.newIndex + 1
             }
 
             project = ProjectState(
