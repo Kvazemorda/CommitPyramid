@@ -15,6 +15,14 @@ final class GameScene: SKScene {
     private let tileWidth: CGFloat = 64
     private let tileHeight: CGFloat = 32
 
+    // MARK: - Camera zoom/pan constants (TASK-029)
+    /// Размер карты в тайлах по стороне. F-15; AC-2.
+    /// После TASK-028/030: заменить на чтение из источника биом-карты (один computed-property).
+    private let mapTilesPerSide: Int = 256
+    /// Минимальный масштаб cameraNode (ближний зум, детальный план). AC-1.
+    /// ВНИМАНИЕ: меньшее xScale = бо́льший зум-ин (ближе). 0.15 — нижняя граница.
+    private let minZoomIn: CGFloat = 0.15
+
     private var didAttach = false
     private var unitNodes: [UUID: SKNode] = [:]
     private var districtNodes: [String: SKNode] = [:]
@@ -39,6 +47,8 @@ final class GameScene: SKScene {
 
     override func didMove(to view: SKView) {
         // За краями тайл-карты — цвет травы (fallback при pan/zoom за границу).
+        // Lawn — временная подложка; заменена BiomeRenderer (TASK-028).
+        // Реальные границы карты (256×256 тайлов) = 16384×8192 px — учтены в worldBoundsInScene.
         backgroundColor = Palette.nileGreen
         scaleMode = .resizeFill
 
@@ -522,6 +532,63 @@ final class GameScene: SKScene {
 
     // MARK: - Камера: pan / zoom
 
+    // MARK: Camera bounds helpers (TASK-029)
+
+    /// Мировые границы изометрической карты в координатах сцены.
+    /// Центрирован по (0,0), как существующий биом-рендер.
+    /// Размер: 256 тайлов → ширина 256*tileWidth=16384, высота 256*tileHeight=8192.
+    /// После TASK-028/030: заменить mapTilesPerSide на computed из BiomeRenderer/worldMap.
+    private var worldBoundsInScene: CGRect {
+        let w = CGFloat(mapTilesPerSide) * tileWidth
+        let h = CGFloat(mapTilesPerSide) * tileHeight
+        return CGRect(x: -w / 2, y: -h / 2, width: w, height: h)
+    }
+
+    /// Зум-аут, при котором карта целиком помещается в текущее окно (5% запас по краям).
+    /// Чем меньше окно — тем больше scale нужен, чтобы вместить карту. AC-2.
+    /// Safe-fallback 13.0: 256 тайлов при tileWidth=64 на окне ~1280 px.
+    private var maxZoomOut: CGFloat {
+        guard let view = view, view.bounds.width > 0, view.bounds.height > 0 else {
+            return 13.0
+        }
+        let fitX = worldBoundsInScene.width  / view.bounds.width
+        let fitY = worldBoundsInScene.height / view.bounds.height
+        return max(fitX, fitY) * 1.05
+    }
+
+    /// Чистая функция: возвращает позицию камеры, ограниченную так,
+    /// чтобы visible-rect пересекался с миром минимум на 1 тайл. AC-4.
+    /// Если карта вписывается в окно на текущем зуме — центрируем по оси.
+    private func clampedPosition(_ point: CGPoint, scale: CGFloat) -> CGPoint {
+        guard let view = view else { return point }
+        let visibleW = view.bounds.width  * scale
+        let visibleH = view.bounds.height * scale
+        let world = worldBoundsInScene
+        var p = point
+        if visibleW >= world.width {
+            p.x = world.midX
+        } else {
+            let lo = world.minX - visibleW / 2 + tileWidth
+            let hi = world.maxX + visibleW / 2 - tileWidth
+            p.x = min(hi, max(lo, p.x))
+        }
+        if visibleH >= world.height {
+            p.y = world.midY
+        } else {
+            let lo = world.minY - visibleH / 2 + tileHeight
+            let hi = world.maxY + visibleH / 2 - tileHeight
+            p.y = min(hi, max(lo, p.y))
+        }
+        return p
+    }
+
+    /// Удобный shortcut: подтянуть текущую позицию камеры под её текущий scale.
+    private func clampCameraPosition() {
+        cameraNode.position = clampedPosition(cameraNode.position, scale: cameraNode.xScale)
+    }
+
+    // MARK: Camera event handlers
+
     private var dragStarted = false
     private var dragMoved = false
 
@@ -534,6 +601,7 @@ final class GameScene: SKScene {
         if dragStarted { dragMoved = true }
         cameraNode.position.x -= event.deltaX
         cameraNode.position.y += event.deltaY
+        clampCameraPosition()
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -545,9 +613,35 @@ final class GameScene: SKScene {
     override func scrollWheel(with event: NSEvent) {
         let delta = event.scrollingDeltaY
         let factor: CGFloat = 1.0 - delta * 0.02
-        let newScale = max(0.3, min(3.0, cameraNode.xScale * factor))
+        // Защита от NaN / Inf при экстремально быстром скролле. AC edge-case.
+        guard factor.isFinite, factor > 0 else { return }
+        let raw = cameraNode.xScale * factor
+        let newScale = min(maxZoomOut, max(minZoomIn, raw))
         cameraNode.xScale = newScale
         cameraNode.yScale = newScale
+        clampCameraPosition()
+    }
+
+    /// Pinch / magnify (трекпад). AC-1,5.
+    /// event.magnification > 0 — пальцы раздвинуты (зум-ин, уменьшаем xScale).
+    /// Если направление инвертировано при ручной проверке — поменять знак.
+    override func magnify(with event: NSEvent) {
+        let factor: CGFloat = 1.0 - event.magnification
+        guard factor.isFinite, factor > 0 else { return }
+        let raw = cameraNode.xScale * factor
+        let newScale = min(maxZoomOut, max(minZoomIn, raw))
+        cameraNode.xScale = newScale
+        cameraNode.yScale = newScale
+        clampCameraPosition()
+    }
+
+    /// Пересчёт ограничений при изменении размера окна (resize / fullscreen). AC edge-case.
+    override func didChangeSize(_ oldSize: CGSize) {
+        super.didChangeSize(oldSize)
+        let s = min(maxZoomOut, max(minZoomIn, cameraNode.xScale))
+        cameraNode.xScale = s
+        cameraNode.yScale = s
+        clampCameraPosition()
     }
 
     // MARK: - Инспектор
@@ -628,8 +722,9 @@ final class GameScene: SKScene {
     // MARK: - Публичные API для SceneBridge
 
     /// Плавно перемещает камеру к изометрической позиции gridPoint.
+    /// Целевая точка ограничена clampedPosition — анимация уходит сразу к допустимой позиции. AC-4.
     func focusCamera(on grid: GridPoint, duration: TimeInterval) {
-        let target = isoPosition(grid: grid)
+        let target = clampedPosition(isoPosition(grid: grid), scale: cameraNode.xScale)
         let move = SKAction.move(to: target, duration: duration)
         move.timingMode = .easeOut
         cameraNode.run(move)
