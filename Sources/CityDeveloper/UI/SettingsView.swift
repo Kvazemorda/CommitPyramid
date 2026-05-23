@@ -116,7 +116,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(minWidth: 480, minHeight: 300)
+        .frame(minWidth: 640, minHeight: 480)
         .alert("Ошибка", isPresented: .constant(alertMessage != nil)) {
             Button("OK") { alertMessage = nil }
         } message: {

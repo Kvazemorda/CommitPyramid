@@ -26,7 +26,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let w = NSWindow(contentViewController: host)
         w.title = "Настройки CityDeveloper"
         w.styleMask = [.titled, .closable]
-        w.setContentSize(NSSize(width: 480, height: 360))
+        w.setContentSize(NSSize(width: 720, height: 600))
+        w.minSize = NSSize(width: 640, height: 480)
         w.center()
         w.delegate = self
         window = w
