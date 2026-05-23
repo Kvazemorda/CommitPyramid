@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var journalWindowController: JournalWindowController!
     private var catchUpScheduler: CatchUpScheduler?
     private var notesWatcher: NotesWatcher!
+    private var gitWatcher: GitWatcher!
     private var worldMapProvider: WorldMapProvider!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -145,6 +146,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         scheduler.register(notesWatcher)
 
+        // F-19: Git watcher. Register persisted repositories, then register
+        // the watcher itself with CatchUpScheduler for periodic scans.
+        gitWatcher = GitWatcher()
+        gitWatcher.engine = engine
+        for repo in appSettings.gitRepos {
+            gitWatcher.register(repo)
+        }
+        scheduler.register(gitWatcher)
+
         scheduler.start()
         catchUpScheduler = scheduler
 
@@ -154,6 +164,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.settingsWindowController.show(
                 settings: self.appSettings,
                 notesWatcher: self.notesWatcher,
+                gitWatcher: self.gitWatcher,
                 onSave: { self.applySettings() }
             )
         }

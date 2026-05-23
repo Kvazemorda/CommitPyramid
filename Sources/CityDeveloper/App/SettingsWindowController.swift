@@ -4,7 +4,12 @@ import SwiftUI
 final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
 
-    func show(settings: AppSettings, notesWatcher: NotesWatcher? = nil, onSave: @escaping () -> Void) {
+    func show(
+        settings: AppSettings,
+        notesWatcher: NotesWatcher? = nil,
+        gitWatcher: GitWatcher? = nil,
+        onSave: @escaping () -> Void
+    ) {
         if let w = window, w.isVisible {
             w.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -14,7 +19,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             settings: settings,
             onSave: { [weak self] in onSave(); self?.window?.close() },
             onCancel: { [weak self] in self?.window?.close() },
-            notesWatcher: notesWatcher
+            notesWatcher: notesWatcher,
+            gitWatcher: gitWatcher
         )
         let host = NSHostingController(rootView: view)
         let w = NSWindow(contentViewController: host)

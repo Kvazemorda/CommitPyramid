@@ -15,17 +15,21 @@ struct SettingsView: View {
     var onCancel: () -> Void
     /// Optional watcher reference for hot-registration of new sources.
     weak var notesWatcher: NotesWatcher?
+    /// Optional git watcher reference for hot-registration of new repos.
+    weak var gitWatcher: GitWatcher?
 
     init(
         settings: AppSettings,
         onSave: @escaping () -> Void,
         onCancel: @escaping () -> Void,
-        notesWatcher: NotesWatcher? = nil
+        notesWatcher: NotesWatcher? = nil,
+        gitWatcher: GitWatcher? = nil
     ) {
         self.settings = settings
         self.onSave = onSave
         self.onCancel = onCancel
         self.notesWatcher = notesWatcher
+        self.gitWatcher = gitWatcher
         _draftTasksPath = State(initialValue: settings.tasksJsonlPath)
         _draftDataDir = State(initialValue: settings.dataDirectory)
         _draftKeyCode = State(initialValue: settings.hotkeyKeyCode)
@@ -93,6 +97,12 @@ struct SettingsView: View {
                 settings: settings,
                 onSourceAdded:   { [weak notesWatcher] spec in notesWatcher?.register(spec) },
                 onSourceRemoved: { [weak notesWatcher] id   in notesWatcher?.unregister(id: id) }
+            )
+
+            GitWatcherSection(
+                settings: settings,
+                onRepoAdded:   { [weak gitWatcher] spec in gitWatcher?.register(spec) },
+                onRepoRemoved: { [weak gitWatcher] id   in gitWatcher?.unregister(id: id) }
             )
 
             Spacer()
