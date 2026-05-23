@@ -13,11 +13,19 @@ struct SettingsView: View {
 
     var onSave: () -> Void
     var onCancel: () -> Void
+    /// Optional watcher reference for hot-registration of new sources.
+    weak var notesWatcher: NotesWatcher?
 
-    init(settings: AppSettings, onSave: @escaping () -> Void, onCancel: @escaping () -> Void) {
+    init(
+        settings: AppSettings,
+        onSave: @escaping () -> Void,
+        onCancel: @escaping () -> Void,
+        notesWatcher: NotesWatcher? = nil
+    ) {
         self.settings = settings
         self.onSave = onSave
         self.onCancel = onCancel
+        self.notesWatcher = notesWatcher
         _draftTasksPath = State(initialValue: settings.tasksJsonlPath)
         _draftDataDir = State(initialValue: settings.dataDirectory)
         _draftKeyCode = State(initialValue: settings.hotkeyKeyCode)
@@ -80,6 +88,12 @@ struct SettingsView: View {
                 }
                 .padding(8)
             }
+
+            NotesWatcherSection(
+                settings: settings,
+                onSourceAdded:   { [weak notesWatcher] spec in notesWatcher?.register(spec) },
+                onSourceRemoved: { [weak notesWatcher] id   in notesWatcher?.unregister(id: id) }
+            )
 
             Spacer()
 
