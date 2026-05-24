@@ -922,4 +922,4 @@ _Объём: M_
 - Lead-model: opus
 - Plan-review: revised
 - Завершена: 2026-05-24
-- Коммит: — (бэкфиллится после commit)
+- Коммит: d2e66ab
