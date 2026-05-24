@@ -511,4 +511,4 @@ _Объём: M_
 - Code-review: approved (opus, P1 trigger; minor +1 off-by-one в scanLimit и mixed test naming — не блокеры)
 - Verify: compile=pass tests=159/161 (1 known-fail BiomeClassifier→TASK-053, не регрессия) targeted=12/12
 - Завершена: 2026-05-24
-- Коммит: —
+- Коммит: a744976
