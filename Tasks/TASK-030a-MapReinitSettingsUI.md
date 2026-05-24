@@ -399,4 +399,4 @@ _Объём: S_
 - Исполнитель: haiku
 - Code-review: approved (sonnet, minor isResetDisabled timer note — not blocker)
 - Завершена: 2026-05-24
-- Коммит: —
+- Коммит: 8839dd3
