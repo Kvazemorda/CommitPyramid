@@ -9,6 +9,8 @@ import SwiftUI
 /// `GameScene.showInspector(forUnitId:)` и `hideInspector()`.
 struct InspectorOverlayCard: View {
     @ObservedObject var bridge: SceneBridge
+    @ObservedObject var appSettings: AppSettings
+    let tasksJsonlPath: URL
 
     var body: some View {
         Group {
@@ -22,7 +24,12 @@ struct InspectorOverlayCard: View {
     }
 
     private func cardView(unit: UnitState, project: ProjectState) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        let source = TaskSourceFormatter.format(
+            taskSource: unit.taskSource,
+            settings: appSettings,
+            tasksJsonlPath: tasksJsonlPath
+        )
+        return VStack(alignment: .leading, spacing: 6) {
             Text(project.name)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(.paletteInkDark)
@@ -40,6 +47,13 @@ struct InspectorOverlayCard: View {
                 .foregroundColor(.paletteInkDark)
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Text("Источник: \(source.short)")
+                .font(.system(size: 10))
+                .foregroundColor(.paletteInkDark.opacity(0.6))
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .help(source.full)
 
             Text(Self.dateFormatter.string(from: unit.taskTs))
                 .font(.system(size: 10))

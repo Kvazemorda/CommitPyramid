@@ -28,17 +28,15 @@ struct GitRepoSpec: Codable, Identifiable, Hashable {
     /// Branch to scan. Defaults to `main`, then `master`, then first branch.
     var branch: String
 
-    // MARK: - Options (all off by default)
+    // MARK: - Options
 
     /// If true, runs `git fetch <remote> <branch>` before each scan.
+    /// Off by default — fetch требует сети и времени.
     var gitFetch: Bool = false
 
-    /// If true, weights each commit by the number of changed lines.
-    var weightByDiff: Bool = false
-
-    /// If true, maps conventional-commit prefixes to unit categories.
-    /// `chore/style/wip` commits are silently ignored.
-    var categoryByType: Bool = false
+    /// If true, weights each commit by the number of changed lines (1..5 юнитов).
+    /// Включено по умолчанию — крупные коммиты строят больше зданий.
+    var weightByDiff: Bool = true
 
     // MARK: - Init
 
@@ -48,15 +46,13 @@ struct GitRepoSpec: Codable, Identifiable, Hashable {
         branch: String,
         remoteUrl: String? = nil,
         gitFetch: Bool = false,
-        weightByDiff: Bool = false,
-        categoryByType: Bool = false
+        weightByDiff: Bool = true
     ) {
         self.path = path
         self.projectId = projectId
         self.branch = branch
         self.gitFetch = gitFetch
         self.weightByDiff = weightByDiff
-        self.categoryByType = categoryByType
         self.id = GitRepoSpec.stableId(path: path, remoteUrl: remoteUrl, projectId: projectId)
     }
 

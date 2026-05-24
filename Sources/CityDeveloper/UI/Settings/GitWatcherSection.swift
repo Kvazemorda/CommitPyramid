@@ -18,6 +18,8 @@ struct GitWatcherSection: View {
 
     /// Alert message for non-git-repo selection
     @State private var alertMessage: String? = nil
+    /// Сообщение об успешном сканировании / без находок.
+    @State private var scanResultMessage: String? = nil
 
     // MARK: - Body
 
@@ -25,7 +27,7 @@ struct GitWatcherSection: View {
         GroupBox("Git watcher") {
             VStack(alignment: .leading, spacing: 8) {
                 if settings.gitRepos.isEmpty {
-                    Text("Репозитории не добавлены. Нажмите «Добавить репозиторий» чтобы подключить локальный git-репо.")
+                    Text("Репозитории не добавлены. Нажмите «Добавить репозиторий» чтобы подключить локальный git-репо, или «Сканировать папку…» чтобы массово найти все .git внутри указанного каталога.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.vertical, 4)
@@ -35,6 +37,8 @@ struct GitWatcherSection: View {
 
                 HStack {
                     Button("Добавить репозиторий…") { pickRepository() }
+                    Button("Сканировать папку…") { scanFolder() }
+                        .help("Выбрать корневую папку и найти в ней все git-репозитории (поиск .git до 3 уровней вложенности). Найденные репо добавятся в список с дефолтными настройками.")
                     Spacer()
                 }
                 .padding(.top, 2)
@@ -51,6 +55,17 @@ struct GitWatcherSection: View {
             Button("OK", role: .cancel) { alertMessage = nil }
         } message: {
             Text(alertMessage ?? "")
+        }
+        .alert(
+            "Сканирование",
+            isPresented: Binding(
+                get: { scanResultMessage != nil },
+                set: { if !$0 { scanResultMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { scanResultMessage = nil }
+        } message: {
+            Text(scanResultMessage ?? "")
         }
     }
 
@@ -103,20 +118,14 @@ struct GitWatcherSection: View {
                 Toggle("git fetch", isOn: repo.gitFetch)
                     .font(.caption)
                     .toggleStyle(.checkbox)
-                    .help("Выполнять git fetch перед каждым сканом")
+                    .help("Перед каждым сканом запускает `git fetch origin <branch>` — подтягивает свежие коммиты из remote. Включай если хочешь видеть чужие коммиты автоматически, без ручного pull. Минус: требует сеть и пару секунд на каждый цикл.")
                     .onChange(of: repo.wrappedValue.gitFetch) { _ in settings.save() }
 
                 Toggle("вес по diff", isOn: repo.weightByDiff)
                     .font(.caption)
                     .toggleStyle(.checkbox)
-                    .help("Количество юнитов пропорционально числу изменённых строк")
+                    .help("Количество юнитов на коммит зависит от размера diff: ≤10 строк → 1 юнит, 11–100 → 2, 101–500 → 3, 500+ → 5. Крупные коммиты строят больше зданий. Без галки — каждый коммит = ровно 1 юнит.")
                     .onChange(of: repo.wrappedValue.weightByDiff) { _ in settings.save() }
-
-                Toggle("тип коммита", isOn: repo.categoryByType)
-                    .font(.caption)
-                    .toggleStyle(.checkbox)
-                    .help("Категория юнита по conventional-commit префиксу (feat/fix/refactor/docs); chore/style/wip игнорируются")
-                    .onChange(of: repo.wrappedValue.categoryByType) { _ in settings.save() }
             }
 
             // Delete button
@@ -167,6 +176,69 @@ struct GitWatcherSection: View {
         settings.gitRepos.removeAll { $0.id == id }
         settings.save()
         onRepoRemoved?(id)
+    }
+
+    /// Сканирует выбранную папку до 3 уровней вглубь, ищет `.git` и регистрирует
+    /// каждый найденный репо со стандартными настройками. Дубликаты по path — skip.
+    private func scanFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles        = false
+        panel.canChooseDirectories  = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Выберите корневую папку — внутри найдём все git-репозитории"
+
+        guard panel.runModal() == .OK, let rootURL = panel.url else { return }
+
+        let fm = FileManager.default
+        let rootPath = rootURL.path
+        var found: [URL] = []
+
+        // Обход в глубину до 3 уровней. Skip скрытые папки кроме самой `.git`,
+        // skip симлинки, чтобы не уйти в кольцо.
+        func walk(_ dir: URL, depth: Int) {
+            if depth > 3 { return }
+            let gitDir = dir.appendingPathComponent(".git")
+            var isDir: ObjCBool = false
+            if fm.fileExists(atPath: gitDir.path, isDirectory: &isDir), isDir.boolValue {
+                // Это репо — добавляем и НЕ ныряем внутрь (вложенные git'ы под .git не интересуют).
+                found.append(dir)
+                return
+            }
+            guard let items = try? fm.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else { return }
+            for item in items {
+                let values = try? item.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                guard values?.isDirectory == true, values?.isSymbolicLink != true else { continue }
+                walk(item, depth: depth + 1)
+            }
+        }
+        walk(rootURL, depth: 0)
+
+        let existingPaths = Set(settings.gitRepos.map { $0.path.standardizedFileURL.path })
+        var addedCount = 0
+        var skippedDup = 0
+        for repoURL in found {
+            let std = repoURL.standardizedFileURL.path
+            if existingPaths.contains(std) { skippedDup += 1; continue }
+            let projectId = GitWatcher.resolveProjectId(at: repoURL)
+            let branch    = GitWatcher.defaultBranch(at: repoURL)
+            let spec = GitRepoSpec(path: repoURL, projectId: projectId, branch: branch)
+            settings.gitRepos.append(spec)
+            onRepoAdded?(spec)
+            addedCount += 1
+        }
+        if addedCount > 0 { settings.save() }
+
+        if found.isEmpty {
+            scanResultMessage = "В папке «\(rootURL.lastPathComponent)» git-репозитории не найдены (глубина поиска — 3 уровня).\n\nПуть: \(rootPath)"
+        } else {
+            var msg = "Найдено репозиториев: \(found.count). Добавлено: \(addedCount)."
+            if skippedDup > 0 { msg += " Пропущено дублей: \(skippedDup)." }
+            scanResultMessage = msg
+        }
     }
 }
 

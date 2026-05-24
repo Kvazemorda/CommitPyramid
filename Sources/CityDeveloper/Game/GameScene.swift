@@ -624,16 +624,11 @@ final class GameScene: SKScene {
         return dominant.fillColor
     }
 
-    /// Рисует список клеток как дорожные ромбы — тот же цвет, что у UnitKind.road.
-    /// Без stroke и тени: просто плоский тайл, не выделяется поверх биома.
+    /// Рисует клетки магистрали тем же визуалом, что и road-юниты квартала:
+    /// тайл-земля (sandMid) + дорожное пятно сверху. Без тени.
     private func drawRoadCells(_ cells: [GridPoint]) {
-        // Совпадает с body-цветом roadSpec в UnitSprites.
-        let roadFill = Palette.sandMid.darkened(by: 0.08)
-
         for cell in cells where roadNodes[cell] == nil {
-            let node = SKShapeNode(path: diamondPath())
-            node.fillColor = roadFill
-            node.strokeColor = .clear
+            let node = UnitSprites.makeRoadCellNode()
             node.position = isoPosition(grid: cell)
             node.zPosition = -CGFloat(cell.x + cell.y) - 0.5
             world.addChild(node)

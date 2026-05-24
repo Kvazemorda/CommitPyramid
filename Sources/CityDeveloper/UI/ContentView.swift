@@ -7,6 +7,12 @@ struct ContentView: View {
     @ObservedObject var modeManager: WindowModeManager
     @ObservedObject var bridge: SceneBridge
     let journalController: JournalWindowController
+    /// Источник конфигурации источников данных (репо/notes) — нужен инспектору
+    /// для расшифровки UnitState.taskSource в человекочитаемое имя.
+    @ObservedObject var appSettings: AppSettings
+    /// Текущий путь к tasks.jsonl — показывается в инспекторе для юнитов,
+    /// у которых source==nil (события из tasks.jsonl без явного source-ключа).
+    let tasksJsonlPath: URL
 
     // Panel state поднят сюда, чтобы сохранялся между открытиями окна журнала
     @State private var collapsed: Bool = false
@@ -33,7 +39,11 @@ struct ContentView: View {
 
                 // SwiftUI overlay-карточка инспектора: trailing center.
                 // allowsHitTesting(false) — клики проходят через карточку к SpriteView.
-                InspectorOverlayCard(bridge: bridge)
+                InspectorOverlayCard(
+                    bridge: bridge,
+                    appSettings: appSettings,
+                    tasksJsonlPath: tasksJsonlPath
+                )
                     .allowsHitTesting(false)
 
                 if buttonVisible {

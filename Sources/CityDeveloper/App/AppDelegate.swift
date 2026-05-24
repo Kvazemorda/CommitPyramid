@@ -91,7 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 engine: engine,
                 modeManager: modeManager,
                 bridge: bridge,
-                journalController: journalWindowController
+                journalController: journalWindowController,
+                appSettings: appSettings,
+                tasksJsonlPath: appSettings.tasksJsonlPath
             )
         )
         hostingView.frame = screen.frame
@@ -275,29 +277,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scene.worldMap = worldMapProvider.map
         scene.resetScene()
 
-        // 9. Pre-seed lastCheckTs = replaySince before registering sources so the
-        //    immediate scan (triggered inside register()) picks up events from that date.
+        // 9. Pre-seed CatchUpState с replaySince для ВСЕХ ключей: глобальные
+        //    идентификаторы watcher'ов И per-source ключи (git-repo-<id>,
+        //    notes-source-<id>). Иначе GitWatcher.performScan читает per-repo
+        //    ключ, который после удаления файла = .distantPast — git log с
+        //    устаревшим --since может вернуть подозрительно мало результатов.
         var freshState = CatchUpState(version: CatchUpState.currentVersion, sources: [:])
-        for id in [notesWatcher.id, gitWatcher.id] {
-            freshState.sources[id] = .init(lastCheckTs: replaySince)
+        freshState.sources[notesWatcher.id] = .init(lastCheckTs: replaySince)
+        freshState.sources[gitWatcher.id]   = .init(lastCheckTs: replaySince)
+        for repo in appSettings.gitRepos {
+            freshState.sources["git-repo-\(repo.id)"] = .init(lastCheckTs: replaySince)
+        }
+        for spec in appSettings.notesSources {
+            freshState.sources["notes-source-\(spec.id)"] = .init(lastCheckTs: replaySince)
         }
         freshState.save()
 
-        // 10. Rebuild CatchUpScheduler with the new engine and pre-seeded state.
-        let scheduler = CatchUpScheduler(engine: engine, appSettings: appSettings)
+        // 10. Пересоздаём watcher'ы и заново регистрируем все репо/notes-источники.
+        //     Старые инстансы держат через [weak self] свои DispatchSource'ы и
+        //     отпускаются вместе с присваиванием новой ссылки. register() триггерит
+        //     немедленный performScan каждого источника, который теперь увидит
+        //     replaySince в CatchUpState → подтянет всю историю до этой даты.
+        notesWatcher = NotesWatcher()
         notesWatcher.engine = engine
+        for spec in appSettings.notesSources {
+            notesWatcher.register(spec)
+        }
+
+        gitWatcher = GitWatcher()
         gitWatcher.engine = engine
+        for repo in appSettings.gitRepos {
+            gitWatcher.register(repo)
+        }
+
+        // 11. Поднимаем CatchUpScheduler заново на новом engine и watcher'ах.
+        let scheduler = CatchUpScheduler(engine: engine, appSettings: appSettings)
         scheduler.register(notesWatcher)
         scheduler.register(gitWatcher)
-
         scheduler.start()
         catchUpScheduler = scheduler
         decayEngine.start()
 
-        // 11. Restart tasks watcher against the new engine (ingestion-state deleted above → reads from offset 0).
+        // 12. Перезапускаем tasks.jsonl watcher на новом engine (ingestion-state
+        //     удалён в шаге 2 → читает с offset 0).
         watcher.stop()
         watcher = TasksJsonlWatcher(fileURL: appSettings.tasksJsonlPath, engine: engine)
         watcher.start()
+
+        // 13. Снимаем паузу со сцены — Settings-окно отобрало фокус, willResignActive
+        //     поставил isPaused=true, и без явного снятия SKView не рисует новый мир
+        //     до следующего фокус-цикла.
+        scene.view?.isPaused = false
     }
 
     // MARK: - Legacy Migration

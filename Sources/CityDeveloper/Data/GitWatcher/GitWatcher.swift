@@ -173,9 +173,14 @@ final class GitWatcher: EventSource, @unchecked Sendable {
             return
         }
 
-        // Parse records: null-byte separated, each record = sha\nct\nsubject
+        // Parse records: null-byte separated, each record = sha\nct\nsubject.
+        // tformat в git добавляет `\n` ПОСЛЕ каждого %x00 → каждая запись после
+        // первой начинается с `\n`. Трим whitespace в начале записи обязателен,
+        // иначе lines[0] = "" и весь коммит молча выкидывается.
         guard let rawString = String(data: stdoutData, encoding: .utf8) else { return }
-        let records = rawString.components(separatedBy: "\0").filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let records = rawString.components(separatedBy: "\0")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
 
         var commits: [GitCommit] = []
         for record in records {
@@ -196,17 +201,16 @@ final class GitWatcher: EventSource, @unchecked Sendable {
             ErrorsLog.write("GitWatcher: '\(repoPath.lastPathComponent)' returned ≥1000 commits since last scan — import will continue over multiple poll cycles")
         }
 
+        if commits.count > 0 {
+            ErrorsLog.write("GitWatcher: '\(repoPath.lastPathComponent)' → \(commits.count) commits since \(sinceISO)")
+        }
+
         // Process commits
         var lastProcessedTs: Date? = nil
         var prevSha: String? = nil
+        var ingestedCount = 0
 
         for commit in commits {
-            // Category/ignore logic
-            if repo.categoryByType && ConventionalCommit.isIgnored(commit.subject) {
-                prevSha = commit.sha
-                continue
-            }
-
             let title = String(commit.subject.prefix(255))
 
             // Weight by diff
@@ -216,10 +220,6 @@ final class GitWatcher: EventSource, @unchecked Sendable {
             } else {
                 weight = 1
             }
-
-            // Category hint (appended to title for now, ignored by UnitPlanner)
-            // Task spec says: if no field on GameEvent, use title prefix [feat] style
-            // We follow the "no field" approach for minimal scope.
 
             for i in 0..<weight {
                 let suffix = weight > 1 ? "#\(i)" : ""
@@ -236,10 +236,15 @@ final class GitWatcher: EventSource, @unchecked Sendable {
                         ts: eventTs
                     )
                 }
+                ingestedCount += 1
             }
 
             lastProcessedTs = commit.ts
             prevSha = commit.sha
+        }
+
+        if ingestedCount > 0 {
+            ErrorsLog.write("GitWatcher: '\(repoPath.lastPathComponent)' → ingested \(ingestedCount) units (lastTs=\(lastProcessedTs.map { ISO8601DateFormatter().string(from: $0) } ?? "-"))")
         }
 
         // Update lastCheckTs to last processed commit ts + 1s (avoids re-processing

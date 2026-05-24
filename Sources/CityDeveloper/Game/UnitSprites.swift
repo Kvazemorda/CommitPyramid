@@ -56,19 +56,13 @@ enum UnitSprites {
 
     // MARK: - Категориальный tier-набор (4 категории × 5 stage = 20 спрайтов)
 
-    /// Точка входа для GameScene: создаёт контейнер с shadow + ground + building.
+    /// Точка входа для GameScene: создаёт контейнер с ground + building.
     /// building.name = "building" — ключ для swapStageSprite.
     /// anchorPoint контейнера — default (SKNode не имеет anchorPoint); позиция = bottom-centre сетки.
     static func makeStageNode(unit: UnitState, stageOverride: Int? = nil) -> SKNode {
         let category = unit.kind.category
         let stage = stageOverride ?? max(unit.tier, 1)
         let container = SKNode()
-
-        // Shadow
-        let shadow = IsoBuilder.shadow(width: tileWidth - 4, height: tileHeight - 2)
-        shadow.position = CGPoint(x: 4, y: -2)
-        shadow.zPosition = -2
-        container.addChild(shadow)
 
         // Ground tile
         let groundColor = categoricalGroundColor(for: category)
@@ -1813,13 +1807,7 @@ enum UnitSprites {
     static func makeNode(unit: UnitState) -> SKNode {
         let container = SKNode()
 
-        // 1. Тень
-        let shadow = IsoBuilder.shadow(width: tileWidth - 4, height: tileHeight - 2)
-        shadow.position = CGPoint(x: 4, y: -2)
-        shadow.zPosition = -2
-        container.addChild(shadow)
-
-        // 2. Тайл-земля под юнитом
+        // Тайл-земля под юнитом
         let groundColor = groundColor(for: unit.kind)
         let ground = IsoBuilder.groundTile(
             width: tileWidth - 2,
@@ -2044,6 +2032,24 @@ enum UnitSprites {
         path.position = CGPoint(x: 0, y: 1)
         node.addChild(path)
         return node
+    }
+
+    /// Публичная фабрика визуала дорожной клетки — используется и для road-юнитов
+    /// квартала, и для клеток магистрали в `GameScene.drawRoadCells`. Возвращает
+    /// контейнер с тайлом-землёй (sandMid) и дорожным пятном поверх — таким же,
+    /// каким рендерится UnitKind.road.
+    static func makeRoadCellNode() -> SKNode {
+        let container = SKNode()
+        let ground = IsoBuilder.groundTile(
+            width: tileWidth - 2,
+            height: tileHeight - 1,
+            fillColor: Palette.sandMid,
+            strokeColor: SKColor.black.withAlphaComponent(0.25)
+        )
+        ground.zPosition = -1
+        container.addChild(ground)
+        container.addChild(makeRoad())
+        return container
     }
 
     private static func makeRawPit() -> SKNode {
