@@ -281,16 +281,17 @@ _Объём: L_ (требует дробления через `/pm`)
 
 ## Статус
 
-`[ ] waiting-for-lead` / `[ ] ready` / `[ ] in-progress` / `[ ] review` / `[ ] done` / `[ ] skipped` / `[x] escalated-too-large`
+`[ ] waiting-for-lead` / `[ ] ready` / `[ ] in-progress` / `[ ] review` / `[ ] done` / `[x] skipped` (split → 030a/030b/030c, 2026-05-24)
 
 ## Метаданные
 - Создана PM: 2026-05-23
 - Spec-review: approved
-- Blocked-by: TASK-026, TASK-027, TASK-028, TASK-029 (ни одна ещё не разобрана/готова)
+- Blocked-by: TASK-026, TASK-027, TASK-028, TASK-029 (все ✅ закрыты к 2026-05-23)
 - Lead-разбор: 2026-05-23
 - Lead-model: opus
-- Lead-verdict: escalate-too-large (см. раздел «🛠 Технический разбор от тимлида»)
-- Plan-review: n/a (по правилу: при L план не пишется, ревью пропускается)
-- Готова к работе: —
+- Lead-verdict: escalate-too-large → resolved-via-split (см. раздел «🛠 Технический разбор от тимлида»)
+- Plan-review: n/a
+- Split-into: TASK-030a (Settings UI), TASK-030b (Reinit orchestrator), TASK-030c (Biome-aware allocation)
+- PM split: 2026-05-24
 - Завершена: —
 - Коммит: —

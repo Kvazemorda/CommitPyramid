@@ -69,6 +69,38 @@ enum TerrainAffinity {
         return weightUnexpected
     }
 
+    // MARK: - TASK-030c F-15: Biome-aware allocation helper
+
+    /// Возвращает упорядоченный список предпочтительных биомов для набора юнитов.
+    ///
+    /// Алгоритм:
+    /// 1. Для каждого биома суммирует `weight(for: kind, in: biome)` по всем kind'ам.
+    /// 2. Отсекает биомы с суммарным весом ≤ 0.3 × max (слабые предпочтения).
+    /// 3. Сортирует по убыванию score.
+    /// 4. Пустой ввод или все нулевые веса → fallback `[.meadow, .desert]`.
+    ///
+    /// Pure-функция: детерминирована, не зависит от глобального состояния (replay-safe).
+    static func preferredBiomes(for kinds: [UnitKind]) -> [BiomeKind] {
+        guard !kinds.isEmpty else { return [.meadow, .desert] }
+
+        var scores: [(biome: BiomeKind, score: Double)] = []
+        for biome in BiomeKind.allCases {
+            let s = kinds.reduce(0.0) { acc, k in acc + weight(for: k, in: biome) }
+            scores.append((biome, s))
+        }
+
+        let maxScore = scores.map(\.score).max() ?? 0.0
+        guard maxScore > 0 else { return [.meadow, .desert] }
+
+        let threshold = 0.3 * maxScore
+        let result = scores
+            .filter { $0.score > threshold }
+            .sorted { $0.score > $1.score }
+            .map(\.biome)
+
+        return result.isEmpty ? [.meadow, .desert] : result
+    }
+
     // MARK: - Private
 
     private static func logEmptyTerrainOnce(kind: UnitKind) {

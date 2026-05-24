@@ -18,7 +18,7 @@ feature_stability:
   F-12: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
   F-13: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
   F-14: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-15: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }
+  F-15: { status: "✅", consecutive_ok: 1, collapse_skipped: false }  # TASK-030a/030b/030c закрыли реинициализацию + biome-aware allocation; followup на replay-aware preferred — отдельная задача
   F-16: { status: "⚠️", consecutive_ok: 1, collapse_skipped: false }  # тесты добавлены, остаток TASK-040 blocked F-21
   F-17: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
   F-18: { status: "✅", consecutive_ok: 1, collapse_skipped: false }

@@ -326,6 +326,9 @@ final class CityEngine: ObservableObject {
                         biomeReader: biomeReader
                     )
                 } else {
+                    // TASK-030c F-15: biome-aware allocation.
+                    // isNewProject означает первый task_completed → unitIds ещё пусты → порог 3 не достигнут
+                    // → preferred = [] → спираль (корректно по спеке: edge case unitIds.count == 0).
                     allocated = districtPlanner.allocateNextOrigin(
                         currentIndex: state.nextDistrictIndex,
                         biomeReader: biomeReader

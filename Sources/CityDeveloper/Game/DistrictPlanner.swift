@@ -10,7 +10,8 @@ struct DistrictPlanner {
     private static let spiralCenter = GridPoint(x: 128, y: 128)
 
     /// Возвращает GridPoint спирали для заданного индекса (без учёта биомов).
-    private func spiralPoint(index: Int) -> GridPoint {
+    /// `internal` (не `private`) — используется в тестах через @testable import.
+    func spiralPoint(index: Int) -> GridPoint {
         if index == 0 { return Self.spiralCenter }
 
         let layer = Int(((Double(index) + 1).squareRoot() + 1) / 2)
@@ -46,7 +47,11 @@ struct DistrictPlanner {
     ///                  если задан — пропускаем водные клетки (.sea / .river).
     /// - Returns: кортеж (origin: GridPoint, newIndex: Int), где newIndex = idx финального шага.
     ///            Caller должен сохранить newIndex в state.nextDistrictIndex.
-    func allocateNextOrigin(currentIndex: Int, biomeReader: BiomeMapReader?) -> (origin: GridPoint, newIndex: Int) {
+    func allocateNextOrigin(
+        currentIndex: Int,
+        biomeReader: BiomeMapReader?,
+        preferredBiomes: [BiomeKind] = []
+    ) -> (origin: GridPoint, newIndex: Int) {
         guard let reader = biomeReader else {
             // Нет карты биомов — старое поведение (back-compat до TASK-026).
             return (spiralPoint(index: currentIndex), currentIndex)
@@ -56,9 +61,30 @@ struct DistrictPlanner {
         var idx = currentIndex
         var origin = spiralPoint(index: idx)
 
+        // BUG-009: пропускаем водные клетки.
         while reader.biome(atX: origin.x, y: origin.y).isWater && idx < maxAttempts {
             idx += 1
             origin = spiralPoint(index: idx)
+        }
+
+        // TASK-030c F-15: biome-aware preference filter.
+        // Если задан список предпочтительных биомов — сканируем первые 20 кандидатов
+        // начиная с currentIndex, ищем первую не-водную клетку в preferredBiomes.
+        // Если ни одна не подошла — fallback на уже найденный (water-skipped) origin.
+        if !preferredBiomes.isEmpty {
+            let preferredSet = Set(preferredBiomes)
+            let scanLimit = currentIndex + 20
+            var scanIdx = currentIndex
+            while scanIdx <= scanLimit {
+                let candidate = spiralPoint(index: scanIdx)
+                let b = reader.biome(atX: candidate.x, y: candidate.y)
+                if !b.isWater && preferredSet.contains(b) {
+                    return (candidate, scanIdx)
+                }
+                scanIdx += 1
+            }
+            // Fallback: ни один из 20 кандидатов не в предпочтительном биоме —
+            // возвращаем уже найденный water-skipped origin.
         }
 
         // Если все 10 000 клеток оказались водой — возвращаем последнюю найденную позицию
