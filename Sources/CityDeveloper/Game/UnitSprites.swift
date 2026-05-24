@@ -60,6 +60,16 @@ enum UnitSprites {
     /// building.name = "building" — ключ для swapStageSprite.
     /// anchorPoint контейнера — default (SKNode не имеет anchorPoint); позиция = bottom-centre сетки.
     static func makeStageNode(unit: UnitState, stageOverride: Int? = nil) -> SKNode {
+        // Road-юниты рендерятся плоской дорожной клеткой (как магистраль),
+        // без 3D-куба. См. BUG-012 / TASK-042.
+        if unit.kind == .road {
+            let road = makeRoadCellNode()
+            road.userData = NSMutableDictionary()
+            road.userData?[unitIdKey] = unit.id
+            road.userData?[projectIdKey] = unit.projectId
+            return road
+        }
+
         let category = unit.kind.category
         let stage = stageOverride ?? max(unit.tier, 1)
         let container = SKNode()
@@ -150,6 +160,10 @@ enum UnitSprites {
         }
 
         // MARK: Residential (12)
+        // Grid sizes per TASK-044 table. Footprint px: gridW*28 × gridH*14. Heights scale with size.
+        // dugout=1×1, shack=1×1, hut=1×1, house=1×1 → stay small
+        // farmHouse=2×2, twoStory=1×2, stoneHse=2×1, townhouse=2×2, tenement=2×2
+        // manor=3×2, villa=3×3, palace=3×3
         let dugout    = res(CGSize(width: 26, height: 14), 12,
                             body: Palette.clay.darkened(by: 0.15), roof: .flat,
                             roofColor: Palette.clay.darkened(by: 0.25))
@@ -157,159 +171,167 @@ enum UnitSprites {
                             body: Palette.clay, roofColor: Palette.ochre)
         let hut       = res(CGSize(width: 32, height: 16), 16,
                             body: Palette.warmBrown.lightened(by: 0.05), roofColor: Palette.ochre)
-        let farmHouse = res(CGSize(width: 34, height: 18), 18,
+        let farmHouse = res(CGSize(width: 56, height: 28), 22,  // 2×2
                             body: Palette.warmBrown, roofColor: Palette.clay,
                             decor: [.window])
         let house     = res(CGSize(width: 36, height: 18), 22,
                             body: Palette.stone.lightened(by: 0.06), roofColor: Palette.clay,
                             decor: [.window])
-        let twoStory  = res(CGSize(width: 34, height: 18), 28,
+        let twoStory  = res(CGSize(width: 28, height: 28), 28,  // 1×2
                             body: Palette.stone, roofColor: Palette.clay,
                             decor: [.window])
-        let stoneHse  = res(CGSize(width: 38, height: 20), 28,
+        let stoneHse  = res(CGSize(width: 56, height: 14), 28,  // 2×1
                             body: Palette.stone.darkened(by: 0.08), roofColor: Palette.smokeGrey,
                             decor: [.window])
-        let townhouse = res(CGSize(width: 34, height: 18), 34,
+        let townhouse = res(CGSize(width: 56, height: 28), 34,  // 2×2
                             body: Palette.sandMid, roofColor: Palette.clay,
                             decor: [.window])
-        let tenement  = res(CGSize(width: 38, height: 20), 38,
+        let tenement  = res(CGSize(width: 56, height: 28), 38,  // 2×2
                             body: Palette.sandMid.darkened(by: 0.05), roof: .flat,
                             roofColor: Palette.stone.darkened(by: 0.15), decor: [.window])
-        let manor     = res(CGSize(width: 46, height: 24), 34,
+        let manor     = res(CGSize(width: 84, height: 28), 34,  // 3×2
                             body: Palette.parchment.darkened(by: 0.08), roofColor: Palette.clay,
                             decor: [.window, .columns])
-        let villaSpec = res(CGSize(width: 48, height: 24), 40,
+        let villaSpec = res(CGSize(width: 84, height: 42), 40,  // 3×3
                             body: Palette.parchment, roofColor: Palette.clay.darkened(by: 0.05),
                             decor: [.window, .columns])
-        let palace    = res(CGSize(width: 52, height: 28), 48,
+        let palace    = res(CGSize(width: 84, height: 42), 48,  // 3×3
                             body: Palette.parchment.lightened(by: 0.04), roofColor: Palette.ochre,
                             decor: [.window, .columns, .pediment])
 
         // MARK: Infrastructure (9)
+        // well=1×1, road=1×1, gate=1×2, bridge=1×3, cistern=2×2, lighthouse=2×2,
+        // irrigationCanal=2×1, pier=3×2, warehouse=2×2
         let wellSpec   = res(CGSize(width: 22, height: 12), 8,
                              body: Palette.stone, roof: .none, roofColor: Palette.stone)
         let roadSpec   = res(CGSize(width: 28, height: 14), 4,
                              body: Palette.sandMid.darkened(by: 0.08), roof: .none,
                              roofColor: .clear)
-        let gateSpec   = res(CGSize(width: 32, height: 16), 22,
+        let gateSpec   = res(CGSize(width: 28, height: 28), 22,  // 1×2
                              body: Palette.stone.darkened(by: 0.05), roof: .flat,
                              roofColor: Palette.stone.darkened(by: 0.20))
-        let bridgeSpec = res(CGSize(width: 40, height: 16), 10,
+        let bridgeSpec = res(CGSize(width: 28, height: 42), 10,  // 1×3
                              body: Palette.stone.lightened(by: 0.06), roof: .none,
                              roofColor: .clear)
-        let cisternSpec = res(CGSize(width: 32, height: 18), 14,
+        let cisternSpec = res(CGSize(width: 56, height: 28), 16,  // 2×2
                               body: Palette.stone.darkened(by: 0.10), roof: .flat,
                               roofColor: Palette.stone.darkened(by: 0.22))
-        let lighthouseSpec = res(CGSize(width: 20, height: 12), 30,
+        let lighthouseSpec = res(CGSize(width: 56, height: 28), 32,  // 2×2
                                  body: Palette.parchment.darkened(by: 0.05),
                                  roof: .pyramid, roofColor: Palette.ochre)
-        let canalSpec  = res(CGSize(width: 44, height: 14), 6,
+        let canalSpec  = res(CGSize(width: 56, height: 14), 6,  // 2×1
                              body: Palette.skyNight.darkened(by: 0.05), roof: .none,
                              roofColor: .clear)
-        let pierSpec   = res(CGSize(width: 36, height: 14), 8,
+        let pierSpec   = res(CGSize(width: 84, height: 28), 10,  // 3×2
                              body: Palette.warmBrown.darkened(by: 0.10), roof: .none,
                              roofColor: .clear)
-        let warehouseSpec = res(CGSize(width: 44, height: 22), 16,
+        let warehouseSpec = res(CGSize(width: 56, height: 28), 18,  // 2×2
                                 body: Palette.sandLight, roof: .flat,
                                 roofColor: Palette.smokeGrey.darkened(by: 0.20))
 
         // MARK: Production (12)
-        let farmSpec   = res(CGSize(width: 40, height: 20), 10,
+        // farm=3×3, fishingPier=2×2, workshop=2×1, raw=1×1, forge=2×1, pottery=2×1,
+        // brewery=2×2, sawmill=2×2, quarry=3×2, mine=2×2, largeWarehouse=3×2, factory=3×3
+        let farmSpec   = res(CGSize(width: 84, height: 42), 14,  // 3×3
                              body: Palette.warmBrown.lightened(by: 0.08), roof: .pyramid,
                              roofColor: Palette.ochre.darkened(by: 0.05))
-        let fishPier   = res(CGSize(width: 36, height: 16), 8,
+        let fishPier   = res(CGSize(width: 56, height: 28), 10,  // 2×2
                              body: Palette.warmBrown.darkened(by: 0.12), roof: .flat,
                              roofColor: Palette.warmBrown.darkened(by: 0.22))
-        let workshopSpec = res(CGSize(width: 38, height: 20), 18,
+        let workshopSpec = res(CGSize(width: 56, height: 14), 18,  // 2×1
                                body: Palette.ochre, roof: .pyramid,
                                roofColor: Palette.smokeGrey, decor: [.chimney])
-        let rawSpec    = res(CGSize(width: 28, height: 14), 8,
+        let rawSpec    = res(CGSize(width: 28, height: 14), 8,  // 1×1
                              body: Palette.clay.darkened(by: 0.20), roof: .none,
                              roofColor: .clear)
-        let forgeSpec  = res(CGSize(width: 36, height: 18), 20,
+        let forgeSpec  = res(CGSize(width: 56, height: 14), 20,  // 2×1
                              body: Palette.warmBrown.darkened(by: 0.05), roof: .pyramid,
                              roofColor: Palette.smokeGrey.darkened(by: 0.10), decor: [.chimney])
-        let potterySpec = res(CGSize(width: 34, height: 18), 16,
+        let potterySpec = res(CGSize(width: 56, height: 14), 16,  // 2×1
                               body: Palette.clay.lightened(by: 0.08), roof: .pyramid,
                               roofColor: Palette.ochre.darkened(by: 0.10))
-        let brewerySpec = res(CGSize(width: 36, height: 18), 18,
+        let brewerySpec = res(CGSize(width: 56, height: 28), 20,  // 2×2
                               body: Palette.ochre.darkened(by: 0.08), roof: .pyramid,
                               roofColor: Palette.warmBrown, decor: [.chimney])
-        let sawmillSpec = res(CGSize(width: 40, height: 20), 14,
+        let sawmillSpec = res(CGSize(width: 56, height: 28), 16,  // 2×2
                               body: Palette.warmBrown.lightened(by: 0.05), roof: .pyramid,
                               roofColor: Palette.warmBrown.darkened(by: 0.25))
-        let quarrySpec  = res(CGSize(width: 36, height: 18), 14,
+        let quarrySpec  = res(CGSize(width: 84, height: 28), 16,  // 3×2
                               body: Palette.stone.darkened(by: 0.15), roof: .flat,
                               roofColor: Palette.stone.darkened(by: 0.28))
-        let mineSpec    = res(CGSize(width: 40, height: 20), 20,
+        let mineSpec    = res(CGSize(width: 56, height: 28), 22,  // 2×2
                               body: Palette.stone.darkened(by: 0.22), roof: .flat,
                               roofColor: Palette.stone.darkened(by: 0.32), decor: [.smokeStack])
-        let lgWarehouse = res(CGSize(width: 52, height: 26), 24,
+        let lgWarehouse = res(CGSize(width: 84, height: 28), 26,  // 3×2
                               body: Palette.sandLight.darkened(by: 0.05), roof: .flat,
                               roofColor: Palette.stone.darkened(by: 0.18), decor: [.smokeStack])
-        let factorySpec = res(CGSize(width: 52, height: 28), 38,
+        let factorySpec = res(CGSize(width: 84, height: 42), 40,  // 3×3
                               body: Palette.sandMid.darkened(by: 0.08), roof: .flat,
                               roofColor: Palette.stone.darkened(by: 0.22),
                               decor: [.chimney, .smokeStack])
 
         // MARK: Social (12 including temple/obelisk legacy)
-        let tavernSpec  = res(CGSize(width: 34, height: 18), 14,
+        // tavern=2×1, market=2×2, plaza=3×3, bathhouse=2×2, school=2×2, hospital=2×2,
+        // forum=3×3, library=2×2, aqueduct=1×3, theater=3×3, temple=3×3, obelisk=1×1
+        let tavernSpec  = res(CGSize(width: 56, height: 14), 14,  // 2×1
                               body: Palette.warmBrown.lightened(by: 0.05), roof: .pyramid,
                               roofColor: Palette.skyDusk.lightened(by: 0.08))
-        let marketSpec  = res(CGSize(width: 44, height: 22), 12,
+        let marketSpec  = res(CGSize(width: 56, height: 28), 14,  // 2×2
                               body: Palette.sandLight, roof: .pyramid,
                               roofColor: Palette.skyDusk, decor: [.columns])
-        let plazaSpec   = res(CGSize(width: 48, height: 24), 8,
+        let plazaSpec   = res(CGSize(width: 84, height: 42), 8,  // 3×3
                               body: Palette.parchment, roof: .flat,
                               roofColor: Palette.parchment.darkened(by: 0.10))
-        let bathhouseSpec = res(CGSize(width: 40, height: 20), 18,
+        let bathhouseSpec = res(CGSize(width: 56, height: 28), 20,  // 2×2
                                 body: Palette.parchment.darkened(by: 0.05), roof: .dome,
                                 roofColor: Palette.stone.lightened(by: 0.10))
-        let schoolSpec  = res(CGSize(width: 38, height: 20), 16,
+        let schoolSpec  = res(CGSize(width: 56, height: 28), 18,  // 2×2
                               body: Palette.parchment.darkened(by: 0.08), roof: .pyramid,
                               roofColor: Palette.clay.lightened(by: 0.05), decor: [.window])
-        let hospitalSpec = res(CGSize(width: 44, height: 22), 20,
+        let hospitalSpec = res(CGSize(width: 56, height: 28), 22,  // 2×2
                                body: Palette.parchment, roof: .pyramid,
                                roofColor: Palette.sandMid, decor: [.window])
-        let forumSpec   = res(CGSize(width: 50, height: 26), 24,
+        let forumSpec   = res(CGSize(width: 84, height: 42), 26,  // 3×3
                               body: Palette.parchment.darkened(by: 0.08), roof: .flat,
                               roofColor: Palette.parchment.darkened(by: 0.12), decor: [.columns])
-        let librarySpec = res(CGSize(width: 42, height: 22), 22,
+        let librarySpec = res(CGSize(width: 56, height: 28), 24,  // 2×2
                               body: Palette.parchment, roof: .pyramid,
                               roofColor: Palette.ochre, decor: [.columns])
-        let aqueductSpec = res(CGSize(width: 56, height: 16), 22,
+        let aqueductSpec = res(CGSize(width: 28, height: 42), 22,  // 1×3
                                body: Palette.parchment.darkened(by: 0.05), roof: .flat,
                                roofColor: Palette.stone.darkened(by: 0.12), decor: [.columns])
-        let theaterSpec = res(CGSize(width: 52, height: 28), 28,
+        let theaterSpec = res(CGSize(width: 84, height: 42), 30,  // 3×3
                               body: Palette.parchment, roof: .pyramid,
                               roofColor: Palette.skyDusk.lightened(by: 0.05), decor: [.columns])
-        let templeSpec  = res(CGSize(width: 44, height: 24), 28,
+        let templeSpec  = res(CGSize(width: 84, height: 42), 30,  // 3×3
                               body: Palette.parchment.darkened(by: 0.05), roof: .pyramid,
                               roofColor: Palette.ochre, decor: [.columns, .pediment])
-        let obeliskSpec = res(CGSize(width: 16, height: 8), 36,
+        let obeliskSpec = res(CGSize(width: 16, height: 8), 36,  // 1×1 (tall, narrow)
                               body: Palette.sandMid, roof: .pyramid,
                               roofColor: Palette.ochre)
 
         // MARK: Religious (3 of 5 that exist in enum)
-        let chapelSpec   = res(CGSize(width: 28, height: 14), 16,
+        // chapel=2×1, cathedral=3×3, pyramid=4×4
+        let chapelSpec   = res(CGSize(width: 56, height: 14), 18,  // 2×1
                                body: Palette.parchment.darkened(by: 0.05), roof: .pyramid,
                                roofColor: Palette.ochre.lightened(by: 0.05))
-        let cathedralSpec = res(CGSize(width: 50, height: 26), 44,
+        let cathedralSpec = res(CGSize(width: 84, height: 42), 46,  // 3×3
                                 body: Palette.parchment.lightened(by: 0.04), roof: .pyramid,
                                 roofColor: Palette.ochre.lightened(by: 0.08), decor: [.columns, .pediment])
         let pyramidSpec  = PlaceholderSpec(
-            footprint: CGSize(width: 56, height: 30), baseHeight: 52,
+            footprint: CGSize(width: 112, height: 56), baseHeight: 60,  // 4×4
             bodyPalette: (top: Palette.sandLight.lightened(by: 0.06), side: Palette.sandLight),
             roof: .pyramid, roofPalette: Palette.ochre.lightened(by: 0.06), decor: [])
 
         // MARK: Military (3)
-        let watchtowerSpec = res(CGSize(width: 20, height: 12), 26,
+        // watchtower=2×1, barracks=2×2, shipyard=3×3
+        let watchtowerSpec = res(CGSize(width: 56, height: 14), 28,  // 2×1 (tall tower)
                                  body: Palette.stone.darkened(by: 0.10), roof: .pyramid,
                                  roofColor: Palette.smokeGrey.darkened(by: 0.12))
-        let barracksSpec   = res(CGSize(width: 48, height: 24), 22,
+        let barracksSpec   = res(CGSize(width: 56, height: 28), 24,  // 2×2
                                  body: Palette.stone.darkened(by: 0.15), roof: .flat,
                                  roofColor: Palette.stone.darkened(by: 0.28))
-        let shipyardSpec   = res(CGSize(width: 52, height: 22), 16,
+        let shipyardSpec   = res(CGSize(width: 84, height: 42), 18,  // 3×3
                                  body: Palette.warmBrown.darkened(by: 0.15), roof: .flat,
                                  roofColor: Palette.warmBrown.darkened(by: 0.30))
 

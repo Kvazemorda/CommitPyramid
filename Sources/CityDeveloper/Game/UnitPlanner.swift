@@ -270,19 +270,22 @@ struct UnitPlanner {
     ///   - buildingIndex: 0-based индекс здания внутри проекта (CityEngine считает: taskCount - planLength - 1).
     ///   - roadCells: уже построенные клетки сети (магистраль + кольца кварталов).
     ///                Используется для anchor-точек (стой рядом с дорогой) и overlap-проверки.
-    ///   - unitSize: footprint здания в тайлах (NxN).
+    ///   - builtCells: клетки, уже занятые зданиями этого (и соседних) кварталов.
+    ///                 Используется для overlap-проверки зданий между собой.
+    ///   - unitSize: footprint здания в тайлах (W×H).
     ///
-    /// Алгоритм:
-    /// 1. Если roadCells пуст — legacy-кольцо вокруг origin.
-    /// 2. Иначе берём «близкие к origin» дорожные клетки (в окне ±halfSide),
-    ///    для каждой пробуем перпендикулярные смещения внутрь и наружу.
-    /// 3. Первая позиция, чей NxN footprint не задевает дорогу — возвращается.
+    /// Алгоритм (TASK-041):
+    /// 1. Если roadCells пуст — legacy-кольцо вокруг origin (ограниченное radius=3).
+    /// 2. Иначе собираем все свободные (non-blocked) кандидаты: depth ∈ 1...5, anchor ∈ nearby, side ∈ [+1,-1].
+    /// 3. Если кандидатов нет — возвращаем nil (CityEngine добавит петлю и повторит).
+    /// 4. Детерминировано выбираем: candidates[i % candidates.count].
     func nextPosition(
         origin: GridPoint,
         buildingIndex: Int,
         roadCells: Set<GridPoint>,
+        builtCells: Set<GridPoint>,
         unitSize: GridSize = GridSize(width: 1, height: 1)
-    ) -> GridPoint {
+    ) -> GridPoint? {
         let i = max(0, buildingIndex)
 
         // Fallback: legacy-кольцо вокруг origin (если карты дорог нет).
@@ -290,7 +293,7 @@ struct UnitPlanner {
             return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
         }
 
-        // Только дороги «своего» квартала: внутри окна ±halfSide+1 от origin.
+        // Только дороги «своего» квартала: внутри окна ±halfSide от origin.
         // Это branch + ring; магистраль (далеко) сюда не попадёт.
         let halfSide = 4
         let nearby = roadCells.filter {
@@ -305,10 +308,10 @@ struct UnitPlanner {
             return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
         }
 
-        // Перебираем (depth, anchor, side). Возвращаем первую non-overlap позицию,
-        // которой ещё не достался юнит. Детерминируется по buildingIndex.
-        var attempts = 0
-        for depth in 1...6 {
+        // Собираем ВСЕ свободные кандидаты: depth ∈ 1...5, anchor ∈ nearby, side ∈ [+1,-1].
+        // Порядок детерминирован (nearby.sorted уже сортирован по (y,x)).
+        var candidates: [GridPoint] = []
+        for depth in 1...5 {
             for anchor in nearby {
                 let perp = perpendicularAxis(at: anchor, roads: roadCells)
                 for side in [1, -1] {
@@ -316,19 +319,19 @@ struct UnitPlanner {
                         x: anchor.x + perp.dx * side * depth,
                         y: anchor.y + perp.dy * side * depth
                     )
-                    if footprintOverlapsRoad(at: candidate, size: unitSize, roads: roadCells) {
+                    if footprintBlocked(at: candidate, size: unitSize, roads: roadCells, built: builtCells) {
                         continue
                     }
-                    if attempts == i {
-                        return candidate
-                    }
-                    attempts += 1
+                    candidates.append(candidate)
                 }
             }
         }
 
-        // Ни одна позиция не подошла — last-resort: легаси-кольцо за пределами ring'а.
-        return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
+        // Нет свободных мест — сигнализируем CityEngine добавить петлю.
+        if candidates.isEmpty { return nil }
+
+        // Детерминированный выбор: i-й кандидат по кругу (не выходим за пределы петель).
+        return candidates[i % candidates.count]
     }
 
     /// Перпендикулярная ось от road-клетки.
@@ -348,20 +351,24 @@ struct UnitPlanner {
         }
     }
 
-    /// Проверяет, перекрывается ли footprint NxN с дорогой.
-    private func footprintOverlapsRoad(at pos: GridPoint, size: GridSize, roads: Set<GridPoint>) -> Bool {
+    /// Проверяет, заблокирован ли footprint W×H — перекрывается с дорогой или занятым зданием.
+    private func footprintBlocked(
+        at pos: GridPoint, size: GridSize,
+        roads: Set<GridPoint>, built: Set<GridPoint>
+    ) -> Bool {
         for dx in 0..<size.width {
             for dy in 0..<size.height {
-                if roads.contains(GridPoint(x: pos.x + dx, y: pos.y + dy)) {
-                    return true
-                }
+                let p = GridPoint(x: pos.x + dx, y: pos.y + dy)
+                if roads.contains(p) || built.contains(p) { return true }
             }
         }
         return false
     }
 
+    /// Legacy-кольцо вокруг origin (только при пустой roadCells).
+    /// Ограничено radius=3 (max 24 здания через ring).
     private func legacyRingPosition(origin: GridPoint, i: Int, unitSize: GridSize) -> GridPoint {
-        let ring = i / 8 + 1
+        let ring = min(i / 8 + 1, 3)
         let slot = i % 8
         let offsets: [(Int, Int)] = [
             (1, 0), (1, 1), (0, 1), (-1, 1),

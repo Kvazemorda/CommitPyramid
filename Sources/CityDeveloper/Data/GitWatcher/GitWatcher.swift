@@ -1,14 +1,6 @@
 import Foundation
 import AppKit
 
-// MARK: - GitCommit (internal transfer object)
-
-private struct GitCommit {
-    let sha: String
-    let ts: Date
-    let subject: String   // first line of commit message, ≤ 255 chars
-}
-
 // MARK: - GitWatcher
 
 /// Scans local git repositories for new commits and ingests them as
@@ -46,6 +38,8 @@ final class GitWatcher: EventSource, @unchecked Sendable {
     // MARK: - Dependencies
 
     weak var engine: CityEngine?
+    /// F-24: read commitWeightMultiplier during performScan (not live — applied on next Reset).
+    weak var appSettings: AppSettings?
 
     // MARK: - Private state (all access on `queue`)
 
@@ -134,13 +128,15 @@ final class GitWatcher: EventSource, @unchecked Sendable {
         // We read the catchup state here to get the per-repo ts.
         let since = loadLastCheckTs(repoId: repo.id)
 
-        // git log with null-byte record separator to handle pipes in subjects
+        // Single git log call: pretty header + numstat per commit.
+        // Format: "COMMIT\t<sha>\t<ct>\t<subject>" followed by numstat lines.
         let sinceISO = ISO8601DateFormatter().string(from: since)
         let logArgs: [String] = [
             "-C", repoPath.path,
             "log", repo.branch,
             "--since", sinceISO,
-            "--pretty=tformat:%H%n%ct%n%s%x00",
+            "--pretty=tformat:COMMIT\t%H\t%ct\t%s",
+            "--numstat",
             "--no-merges",
             "-n", "1000"
         ]
@@ -173,25 +169,50 @@ final class GitWatcher: EventSource, @unchecked Sendable {
             return
         }
 
-        // Parse records: null-byte separated, each record = sha\nct\nsubject.
-        // tformat в git добавляет `\n` ПОСЛЕ каждого %x00 → каждая запись после
-        // первой начинается с `\n`. Трим whitespace в начале записи обязателен,
-        // иначе lines[0] = "" и весь коммит молча выкидывается.
+        // Parse combined --pretty + --numstat output.
+        // Each commit block starts with "COMMIT\t<sha>\t<ct>\t<subject>",
+        // followed by zero or more numstat lines: "<ins>\t<del>\t<file>".
+        // Binary files appear as "-\t-\t<file>" — Int("-") == nil → treated as 0.
         guard let rawString = String(data: stdoutData, encoding: .utf8) else { return }
-        let records = rawString.components(separatedBy: "\0")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
 
-        var commits: [GitCommit] = []
-        for record in records {
-            let lines = record.components(separatedBy: "\n")
-            guard lines.count >= 3 else { continue }
-            let sha = lines[0].trimmingCharacters(in: .whitespaces)
-            guard !sha.isEmpty, let ct = Double(lines[1].trimmingCharacters(in: .whitespaces)) else { continue }
-            let subject = lines[2...].joined(separator: "\n")   // subject may span lines but we just take it
-            let ts = Date(timeIntervalSince1970: ct)
-            commits.append(GitCommit(sha: sha, ts: ts, subject: String(subject.prefix(255))))
+        struct GitCommitWithStat {
+            let sha: String
+            let ts: Date
+            let subject: String
+            var diffLines: Int
         }
+        var commits: [GitCommitWithStat] = []
+        var current: GitCommitWithStat?
+
+        for line in rawString.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+
+            if trimmed.hasPrefix("COMMIT\t") {
+                // Close previous commit
+                if let c = current { commits.append(c) }
+                // Parse new commit header
+                let parts = trimmed.components(separatedBy: "\t")
+                guard parts.count >= 4,
+                      let ct = Double(parts[2]) else { current = nil; continue }
+                current = GitCommitWithStat(
+                    sha: parts[1],
+                    ts: Date(timeIntervalSince1970: ct),
+                    subject: String(parts[3...].joined(separator: "\t").prefix(255)),
+                    diffLines: 0
+                )
+            } else {
+                // numstat line: "<ins>\t<del>\t<file>" — skip if no active commit
+                guard current != nil else { continue }
+                let parts = trimmed.components(separatedBy: "\t")
+                guard parts.count >= 2 else { continue }
+                let ins = Int(parts[0]) ?? 0
+                let del = Int(parts[1]) ?? 0
+                current?.diffLines += ins + del
+            }
+        }
+        // Flush last commit
+        if let c = current { commits.append(c) }
 
         // git log returns newest-first; sort ascending for stable replay
         commits.sort { $0.ts < $1.ts }
@@ -207,19 +228,17 @@ final class GitWatcher: EventSource, @unchecked Sendable {
 
         // Process commits
         var lastProcessedTs: Date? = nil
-        var prevSha: String? = nil
         var ingestedCount = 0
+
+        // F-24: read multiplier once per scan so mid-scan slider changes don't apply partially.
+        let commitMultiplier = appSettings?.commitWeightMultiplier ?? 0.1
 
         for commit in commits {
             let title = String(commit.subject.prefix(255))
 
-            // Weight by diff
-            let weight: Int
-            if repo.weightByDiff, let prev = prevSha {
-                weight = computeWeight(repo: repo, prevSha: prev, sha: commit.sha)
-            } else {
-                weight = 1
-            }
+            // Weight by diff (pure function — no subprocess), then apply global multiplier.
+            let baseWeight = repo.weightByDiff ? weightFromLines(commit.diffLines) : 1
+            let weight = max(1, Int(round(Double(baseWeight) * commitMultiplier)))
 
             for i in 0..<weight {
                 let suffix = weight > 1 ? "#\(i)" : ""
@@ -240,7 +259,6 @@ final class GitWatcher: EventSource, @unchecked Sendable {
             }
 
             lastProcessedTs = commit.ts
-            prevSha = commit.sha
         }
 
         if ingestedCount > 0 {
@@ -265,46 +283,15 @@ final class GitWatcher: EventSource, @unchecked Sendable {
 
     // MARK: - Diff weight
 
-    private func computeWeight(repo: GitRepoSpec, prevSha: String, sha: String) -> Int {
-        let diffArgs: [String] = [
-            "-C", repo.path.path,
-            "diff", "--shortstat",
-            "\(prevSha)..\(sha)"
-        ]
-        do {
-            let result = try GitCLI.run(args: diffArgs, cwd: repo.path)
-            guard let text = String(data: result.stdout, encoding: .utf8) else { return 1 }
-            let lines = parseDiffShortstat(text)
-            switch lines {
-            case 0...10:   return 1
-            case 11...100: return 2
-            case 101...500: return 3
-            default:       return 5
-            }
-        } catch {
-            // If diff fails, fall back to weight 1
-            return 1
+    /// Pure mapping from total changed lines (insertions + deletions) to a
+    /// unit-weight bucket. No subprocess involved.
+    private func weightFromLines(_ lines: Int) -> Int {
+        switch lines {
+        case 0...200:   return 1
+        case 201...2000: return 2
+        case 2001...10000: return 3
+        default:        return 5
         }
-    }
-
-    /// Parses `git diff --shortstat` output, returning total insertions + deletions.
-    private func parseDiffShortstat(_ text: String) -> Int {
-        // Sample: " 2 files changed, 45 insertions(+), 12 deletions(-)"
-        var total = 0
-        // Match integers preceding "insertion" and "deletion"
-        let pattern = #"(\d+)\s+insertion"#
-        if let regex = try? NSRegularExpression(pattern: pattern),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
-            total += Int(text[range]) ?? 0
-        }
-        let pattern2 = #"(\d+)\s+deletion"#
-        if let regex = try? NSRegularExpression(pattern: pattern2),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
-            total += Int(text[range]) ?? 0
-        }
-        return total
     }
 
     // MARK: - Per-repo lastCheckTs (piggybacks on CatchUpState)

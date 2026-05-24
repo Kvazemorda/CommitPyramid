@@ -27,52 +27,52 @@ _Актуально на: 2026-05-22 (по TASK-039)._
 | 1  | Землянка             | zemlyanka          | residential    | любой          | 1×1      | 0        | нет   | 2 → Лачуга            | zemlyanka.png                                   |
 | 2  | Лачуга               | shack              | residential    | любой          | 1×1      | 0        | нет   | 2 → Дом               | shack.png (stage 1)                             |
 | 3  | Хижина               | khizhina           | residential    | лес/горы       | 1×1      | 0        | нет   | 2 → Каменный дом      | khizhina.png                                    |
-| 4  | Фермерский дом       | farmhouse          | residential    | луг/река       | 1×1      | 1        | нет   | 2 → Усадьба           | farmhouse.png                                   |
+| 4  | Фермерский дом       | farmhouse          | residential    | луг/река       | 2×2      | 1        | нет   | 2 → Усадьба           | farmhouse.png                                   |
 | 5  | Дом                  | house              | residential    | любой          | 1×1      | 1        | нет   | 3 → Доходный дом      | house_stage2.png / house_stage3.png / house_stage4.png |
 | 6  | Двухэтажный дом      | two_story_house    | residential    | луг/река       | 1×2      | 2        | нет   | 2 → Доходный дом      | two_story_house.png                             |
-| 7  | Каменный дом         | stone_house        | residential    | горы/камни     | 1×1      | 2        | нет   | 2 → Усадьба           | stone_house.png                                 |
-| 8  | Таунхаус             | townhouse          | residential    | любой          | 1×2      | 2        | да    | —                     | townhouse.png                                   |
+| 7  | Каменный дом         | stone_house        | residential    | горы/камни     | 2×1      | 2        | нет   | 2 → Усадьба           | stone_house.png                                 |
+| 8  | Таунхаус             | townhouse          | residential    | любой          | 2×2      | 3        | нет   | —                     | townhouse.png                                   |
 | 9  | Доходный дом         | tenement           | residential    | любой          | 2×2      | 3        | да    | —                     | tenement.png                                    |
-| 10 | Усадьба              | manor              | residential    | луг/лес        | 2×2      | 3        | да    | —                     | manor.png                                       |
-| 11 | Вилла                | villa              | residential    | луг/река       | 2×2      | 4        | да    | —                     | villa.png (stage 5)                             |
+| 10 | Усадьба              | manor              | residential    | луг/лес        | 3×2      | 4        | да    | —                     | manor.png                                       |
+| 11 | Вилла                | villa              | residential    | луг/река       | 3×3      | 4        | да    | —                     | villa.png (stage 5)                             |
 | 12 | Дворец               | dvorets            | residential    | любой          | 3×3      | 5        | да    | —                     | dvorets.png                                     |
-| 13 | Колодец              | well               | infrastructure | луг/пустыня    | 1×1      | 0        | да    | —                     | well.png                                        |
-| 14 | Дорога               | road               | infrastructure | любой          | 1×1      | 0        | да    | —                     | road.png                                        |
-| 15 | Ворота               | gates              | infrastructure | любой          | 1×2      | 1        | да    | —                     | gates.png                                       |
-| 16 | Мост                 | bridge             | infrastructure | река/море      | 1×1      | 1        | да    | —                     | bridge.png                                      |
-| 17 | Цистерна             | cistern            | infrastructure | пустыня        | 1×1      | 1        | да    | —                     | cistern.png                                     |
-| 18 | Маяк                 | lighthouse         | infrastructure | море/река      | 2×2      | 2        | да    | —                     | lighthouse.png                                  |
-| 19 | Оросительный канал   | irrigation_canal   | infrastructure | пустыня/луг    | 1×1      | 1        | да    | —                     | irrigation_canal.png                            |
-| 20 | Пристань             | pier               | infrastructure | море/река      | 2×2      | 2        | да    | —                     | pier.png                                        |
-| 21 | Ферма                | farm               | production     | луг/река       | 2×2      | 0        | да    | —                     | farm.png                                        |
-| 22 | Рыболовецкий причал  | fishing_pier       | production     | река/море      | 1×2      | 0        | да    | —                     | fishing_pier.png                                |
-| 23 | Мастерская           | workshop           | production     | любой          | 1×1      | 1        | нет   | —                     | workshop_stage2.png / workshop_stage3.png / workshop_stage4.png / workshop_stage5.png |
-| 24 | Склад                | warehouse          | production     | любой          | 2×2      | 0        | да    | 3 → Большой склад     | warehouse_stage2.png / warehouse_stage3.png / warehouse_stage4.png / warehouse_stage5.png |
-| 25 | Кузница              | smithy             | production     | горы/камни     | 1×1      | 1        | да    | —                     | smithy.png                                      |
-| 26 | Гончарня             | pottery            | production     | луг/река       | 1×1      | 1        | да    | —                     | pottery.png                                     |
-| 27 | Пивоварня            | brewery            | production     | луг/лес        | 1×2      | 2        | да    | —                     | brewery.png                                     |
-| 28 | Лесопилка            | sawmill            | production     | лес            | 1×2      | 1        | да    | —                     | sawmill.png                                     |
-| 29 | Каменоломня          | quarry             | production     | горы/камни     | 2×2      | 1        | да    | —                     | quarry.png                                      |
-| 30 | Шахта                | mine               | production     | горы           | 2×2      | 2        | да    | —                     | mine.png                                        |
+| 13 | Колодец              | well               | infrastructure | луг/пустыня    | 1×1      | 0        | нет   | —                     | well.png                                        |
+| 14 | Дорога               | road               | infrastructure | любой          | 1×1      | 0        | нет   | —                     | road.png                                        |
+| 15 | Ворота               | gates              | infrastructure | любой          | 1×2      | 2        | нет   | —                     | gates.png                                       |
+| 16 | Мост                 | bridge             | infrastructure | река/море      | 1×3      | 2        | нет   | —                     | bridge.png                                      |
+| 17 | Цистерна             | cistern            | infrastructure | пустыня        | 2×2      | 2        | нет   | —                     | cistern.png                                     |
+| 18 | Маяк                 | lighthouse         | infrastructure | море/река      | 2×2      | 3        | да    | —                     | lighthouse.png                                  |
+| 19 | Оросительный канал   | irrigation_canal   | infrastructure | пустыня/луг    | 2×1      | 2        | нет   | —                     | irrigation_canal.png                            |
+| 20 | Пристань             | pier               | infrastructure | море/река      | 3×2      | 1        | нет   | —                     | pier.png                                        |
+| 21 | Ферма                | farm               | production     | луг/река       | 3×3      | 0        | нет   | —                     | farm.png                                        |
+| 22 | Рыболовецкий причал  | fishing_pier       | production     | река/море      | 2×2      | 0        | нет   | —                     | fishing_pier.png                                |
+| 23 | Мастерская           | workshop           | production     | любой          | 2×1      | 1        | нет   | —                     | workshop_stage2.png / workshop_stage3.png / workshop_stage4.png / workshop_stage5.png |
+| 24 | Склад                | warehouse          | production     | любой          | 2×2      | 0        | нет   | 3 → Большой склад     | warehouse_stage2.png / warehouse_stage3.png / warehouse_stage4.png / warehouse_stage5.png |
+| 25 | Кузница              | smithy             | production     | горы/камни     | 2×1      | 2        | нет   | —                     | smithy.png                                      |
+| 26 | Гончарня             | pottery            | production     | луг/река       | 2×1      | 1        | нет   | —                     | pottery.png                                     |
+| 27 | Пивоварня            | brewery            | production     | луг/лес        | 2×2      | 2        | нет   | —                     | brewery.png                                     |
+| 28 | Лесопилка            | sawmill            | production     | лес            | 2×2      | 1        | нет   | —                     | sawmill.png                                     |
+| 29 | Каменоломня          | quarry             | production     | горы/камни     | 3×2      | 1        | нет   | —                     | quarry.png                                      |
+| 30 | Шахта                | mine               | production     | горы           | 2×2      | 3        | да    | —                     | mine.png                                        |
 | 31 | Большой склад        | great_warehouse    | production     | любой          | 3×2      | 3        | да    | —                     | great_warehouse.png                             |
-| 32 | Завод                | factory            | production     | любой          | 3×3      | 3        | да    | —                     | factory.png                                     |
-| 33 | Таверна              | tavern             | social         | любой          | 1×1      | 1        | да    | —                     | tavern.png                                      |
-| 34 | Рынок                | market             | social         | любой          | 2×2      | 2        | да    | —                     | market_stage2.png / market_stage3.png / market_stage4.png / market_stage5.png |
-| 35 | Площадь              | plaza              | social         | любой          | 2×2      | 2        | да    | —                     | plaza.png                                       |
-| 36 | Баня                 | bathhouse          | social         | луг/река       | 2×1      | 2        | да    | —                     | bathhouse.png                                   |
-| 37 | Школа                | school             | social         | любой          | 2×1      | 2        | да    | —                     | school.png                                      |
+| 32 | Завод                | factory            | production     | любой          | 3×3      | 4        | да    | —                     | factory.png                                     |
+| 33 | Таверна              | tavern             | social         | любой          | 2×1      | 1        | нет   | —                     | tavern.png                                      |
+| 34 | Рынок                | market             | social         | любой          | 2×2      | 1        | нет   | —                     | market_stage2.png / market_stage3.png / market_stage4.png / market_stage5.png |
+| 35 | Площадь              | plaza              | social         | любой          | 3×3      | 2        | нет   | —                     | plaza.png                                       |
+| 36 | Баня                 | bathhouse          | social         | луг/река       | 2×2      | 2        | нет   | —                     | bathhouse.png                                   |
+| 37 | Школа                | school             | social         | любой          | 2×2      | 2        | нет   | —                     | school.png                                      |
 | 38 | Больница             | hospital           | social         | любой          | 2×2      | 3        | да    | —                     | hospital.png                                    |
 | 39 | Форум                | forum              | social         | любой          | 3×3      | 3        | да    | —                     | forum_stage3.png / forum_stage4.png / forum_stage5.png |
-| 40 | Библиотека           | library            | social         | любой          | 2×2      | 4        | да    | —                     | library.png                                     |
-| 41 | Акведук              | aqueduct           | social         | горы/луг       | линейный | 3        | да    | —                     | aqueduct.png                                    |
-| 42 | Театр                | theater            | social         | любой          | 3×2      | 4        | да    | —                     | theater.png                                     |
-| 43 | Часовня              | chapel             | religious      | любой          | 1×1      | 1        | да    | —                     | chapel.png                                      |
-| 44 | Храм                 | temple             | religious      | любой          | 2×2      | 3        | да    | —                     | temple_stage4.png / temple_stage5.png           |
+| 40 | Библиотека           | library            | social         | любой          | 2×2      | 3        | нет   | —                     | library.png                                     |
+| 41 | Акведук              | aqueduct           | social         | горы/луг       | 1×3      | 4        | да    | —                     | aqueduct.png                                    |
+| 42 | Театр                | theater            | social         | любой          | 3×3      | 4        | да    | —                     | theater.png                                     |
+| 43 | Часовня              | chapel             | religious      | любой          | 2×1      | 1        | нет   | —                     | chapel.png                                      |
+| 44 | Храм                 | temple             | religious      | любой          | 3×3      | 3        | нет   | —                     | temple_stage4.png / temple_stage5.png           |
 | 45 | Обелиск              | obelisk            | religious      | пустыня        | 1×1      | 4        | да    | —                     | obelisk.png                                     |
-| 46 | Собор                | cathedral          | religious      | любой          | 3×3      | 5        | да    | —                     | cathedral.png                                   |
+| 46 | Собор                | cathedral          | religious      | любой          | 3×3      | 4        | да    | —                     | cathedral.png                                   |
 | 47 | Пирамида             | pyramid            | religious      | пустыня        | 4×4      | 5        | да    | —                     | pyramid.png                                     |
-| 48 | Сторожевая башня     | watchtower         | military       | любой          | 1×1      | 1        | да    | —                     | watchtower.png                                  |
-| 49 | Казармы              | barracks           | military       | любой          | 2×2      | 2        | да    | —                     | barracks.png                                    |
+| 48 | Сторожевая башня     | watchtower         | military       | любой          | 2×1      | 2        | нет   | —                     | watchtower.png                                  |
+| 49 | Казармы              | barracks           | military       | любой          | 2×2      | 3        | да    | —                     | barracks.png                                    |
 | 50 | Верфь                | shipyard           | military       | море/река      | 3×3      | 3        | да    | —                     | shipyard.png                                    |
 
 **Примечания к таблице:**

@@ -1,6 +1,26 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-22 (после полу-ночного прогона: hotkey + инспектор + полноценный изо-арт)_
+_Актуально на: 2026-05-24 (прогон BUG-011..016 + F-23/F-24)_
+
+## ⏱ Что сделано за прогон 2026-05-24 (orchestrated by Opus, executed by Sonnet)
+
+Закрыты 6 багов и добавлены 2 фичи:
+
+**Закрыто:**
+- BUG-011 (P0) — UnitPlanner ставит здания внутри петель, без 8-лучевого паттерна. Добавлен tracking занятых клеток + реактивный extendDistrictPlan. TASK-041.
+- BUG-012 (P0) — road-юниты используют makeRoadCellNode (как магистраль), без 3D-куба. TASK-042.
+- BUG-013 (P0) — пороги computeWeight подняты до 200/2000/10000 + multiplier 0.1 default. TASK-043.
+- BUG-014 (P1) — UnitKind.size возвращает корректные GridSize для всех ~50 юнитов; только {shack, house, well, road, zemlyanka, khizhina, obelisk} = 1×1. TASK-044.
+- BUG-015 (P0) — один git log --numstat вместо N git diff (CPU storm устранён, импорт ≤10s). TASK-045.
+- BUG-016 (P1) — EvolutionGraph с 10 cross-unit правилами заменил тупой kind-counter. TASK-046.
+
+**Закрыто полностью (F-23, F-24):**
+- F-23 (Cross-unit эволюция) — реализован EvolutionGraph (requirements по соседним юнитам). TASK-046.
+- F-24 (Множитель веса) — слайдеры в Settings (commit 0.1, task 1.0), persistence v3. TASK-043.
+
+---
+
+## ⏱ Что сделано за прогон 2026-05-22
 
 ## ⏱ Что сделано за прогон 2026-05-22
 

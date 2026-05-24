@@ -8,6 +8,8 @@ final class TasksJsonlWatcher {
     private var fileDescriptor: Int32 = -1
     private var ingestion: IngestionState
     private let queue = DispatchQueue(label: "city.watcher.io")
+    /// F-24: read taskWeightMultiplier when ingesting lines (applies on Reset replay).
+    weak var appSettings: AppSettings?
 
     init(fileURL: URL = AppPaths.tasksJsonl, engine: CityEngine) {
         self.fileURL = fileURL
@@ -160,14 +162,22 @@ final class TasksJsonlWatcher {
             let record = try decoder.decode(TaskRecord.self, from: bytes)
             switch record.validate() {
             case .valid(let trimmedTitle):
-                DispatchQueue.main.async { [weak self] in
-                    self?.engine.ingestTaskCompletion(
-                        project: record.project,
-                        title: trimmedTitle,
-                        taskId: record.taskId,
-                        source: record.source,
-                        ts: record.ts
-                    )
+                // F-24: apply taskWeightMultiplier — repeat ingest N times (≥1) per record.
+                let multiplier = appSettings?.taskWeightMultiplier ?? 1.0
+                let repeatCount = max(1, Int(round(multiplier)))
+                for j in 0..<repeatCount {
+                    let suffix = repeatCount > 1 ? "#\(j)" : ""
+                    let src = (record.source ?? "tasks:\(record.taskId ?? UUID().uuidString)") + suffix
+                    let ts = record.ts.addingTimeInterval(Double(j) * 0.001)
+                    DispatchQueue.main.async { [weak self] in
+                        self?.engine.ingestTaskCompletion(
+                            project: record.project,
+                            title: trimmedTitle,
+                            taskId: record.taskId,
+                            source: src,
+                            ts: ts
+                        )
+                    }
                 }
             case .invalid(let reason):
                 ErrorsLog.write("Watcher: invalid line at offset \(offset): \(reason)")

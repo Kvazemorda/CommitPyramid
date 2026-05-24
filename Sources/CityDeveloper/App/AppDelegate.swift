@@ -132,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         watcher = TasksJsonlWatcher(fileURL: appSettings.tasksJsonlPath, engine: engine)
+        watcher.appSettings = appSettings
         watcher.start()
 
         // F-20: catch-up scheduler (watcher infrastructure for F-18/F-19).
@@ -146,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the watcher itself with CatchUpScheduler for periodic scans.
         notesWatcher = NotesWatcher()
         notesWatcher.engine = engine
+        notesWatcher.appSettings = appSettings
         for spec in appSettings.notesSources {
             notesWatcher.register(spec)
         }
@@ -155,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the watcher itself with CatchUpScheduler for periodic scans.
         gitWatcher = GitWatcher()
         gitWatcher.engine = engine
+        gitWatcher.appSettings = appSettings
         for repo in appSettings.gitRepos {
             gitWatcher.register(repo)
         }
@@ -300,12 +303,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //     replaySince в CatchUpState → подтянет всю историю до этой даты.
         notesWatcher = NotesWatcher()
         notesWatcher.engine = engine
+        notesWatcher.appSettings = appSettings
         for spec in appSettings.notesSources {
             notesWatcher.register(spec)
         }
 
         gitWatcher = GitWatcher()
         gitWatcher.engine = engine
+        gitWatcher.appSettings = appSettings
         for repo in appSettings.gitRepos {
             gitWatcher.register(repo)
         }
@@ -322,6 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //     удалён в шаге 2 → читает с offset 0).
         watcher.stop()
         watcher = TasksJsonlWatcher(fileURL: appSettings.tasksJsonlPath, engine: engine)
+        watcher.appSettings = appSettings
         watcher.start()
 
         // 13. Снимаем паузу со сцены — Settings-окно отобрало фокус, willResignActive

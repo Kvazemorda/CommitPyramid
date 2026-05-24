@@ -310,12 +310,12 @@ final class CityEngine: ObservableObject {
         // Дорога строится первой: пока в плане квартала есть непостроенные клетки —
         // текущая задача даёт следующую road-клетку. Когда план исчерпан — обычная логика.
         let kind: UnitKind
-        let position: GridPoint
+        let placedPos: GridPoint
         if let rn = roadNetwork,
            !rn.isPlanComplete(for: projectKey),
            let roadCell = rn.consumeNextPlanCell(for: projectKey) {
             kind = .road
-            position = roadCell
+            placedPos = roadCell
         } else {
             // TASK-035 F-16: передаём биом клетки квартала (nil → uniform, back-compat).
             let districtBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
@@ -332,19 +332,51 @@ final class CityEngine: ObservableObject {
             // buildingIndex считаем как «task - длина плана» (роудтаски не считаются зданиями).
             let planLen = roadNetwork?.plannedCells(for: projectKey).count ?? 0
             let buildingIndex = max(0, project.taskCount - planLen - 1)
-            position = unitPlanner.nextPosition(
-                origin: project.districtOrigin,
-                buildingIndex: buildingIndex,
-                roadCells: roadNetwork?.allCells ?? [],
-                unitSize: kind.size
-            )
+
+            // Реактивный extendDistrictPlan (TASK-041):
+            // Пробуем найти позицию; если nil — добавляем петлю и повторяем (до 5 раз).
+            var foundPos: GridPoint? = nil
+            var extends = 0
+            while foundPos == nil && extends < 5 {
+                let builtSet = Set(state.units.values
+                    .filter { $0.projectId == projectKey }
+                    .flatMap { unit -> [GridPoint] in
+                        let s = unit.kind.size
+                        var cells: [GridPoint] = []
+                        for dx in 0..<s.width {
+                            for dy in 0..<s.height {
+                                cells.append(GridPoint(
+                                    x: unit.position.x + dx,
+                                    y: unit.position.y + dy))
+                            }
+                        }
+                        return cells
+                    })
+                foundPos = unitPlanner.nextPosition(
+                    origin: project.districtOrigin,
+                    buildingIndex: buildingIndex,
+                    roadCells: roadNetwork?.allCells ?? [],
+                    builtCells: builtSet,
+                    unitSize: kind.size
+                )
+                if foundPos == nil {
+                    extends += 1
+                    let added = roadNetwork?.extendDistrictPlan(projectId: projectKey) ?? 0
+                    if added == 0 { break }
+                }
+            }
+            guard let resolved = foundPos else {
+                ErrorsLog.write("CityEngine: no position for unit \(kind.rawValue) in \(projectKey) — skipping")
+                return
+            }
+            placedPos = resolved
         }
 
         let unit = UnitState(
             id: UUID(),
             projectId: projectKey,
             kind: kind,
-            position: position,
+            position: placedPos,
             tier: project.stage,
             decayLevel: 0,
             taskTitle: event.title,
@@ -376,9 +408,16 @@ final class CityEngine: ObservableObject {
         if !silent {
             // Порядок в events.jsonl: task_completed → (restore?) → unit_built → (unit_evolved × N опц.) → (stage_up?).
             appendSystemEvent(.unitBuilt, project: projectKey, title: unit.kind.label)
-            // TASK-034 F-16: repeat-обёртка для каскадов (Землянка → Лачуга → Дом в один тик).
-            // На каждой итерации ≥ 1 эволюция; при changed == false — выходим.
-            repeat { } while applyEvolutionsIfReady(projectKey: projectKey)
+            // TASK-046: repeat-обёртка для каскадов (Землянка → Лачуга → Дом в один тик).
+            // Лимит 5 итераций защищает от потенциальных циклов (edge case stack overflow).
+            var cascadeCount = 0
+            repeat {
+                cascadeCount += 1
+                if cascadeCount > 5 {
+                    ErrorsLog.write("CityEngine: cascade limit 5 reached for \(projectKey)")
+                    break
+                }
+            } while applyEvolutionsIfReady(projectKey: projectKey)
             if newStage > oldStage {
                 appendSystemEvent(.stageUp, project: projectKey, title: "S\(oldStage) → S\(newStage)")
             }
@@ -402,51 +441,64 @@ final class CityEngine: ObservableObject {
         }
     }
 
-    // MARK: - TASK-034: Evolution logic
+    // MARK: - TASK-046: Evolution logic (EvolutionGraph)
 
-    /// Проверяет квартал projectKey на «созревшие» эволюционные группы и применяет
-    /// ровно один порог (threshold штук) самых старых юнитов данного kind.
-    /// Возвращает true, если была хотя бы одна эволюция (для repeat-while каскада).
+    /// Проверяет квартал projectKey по таблице EvolutionGraph.rules.
+    /// Применяет ПЕРВОЕ сработавшее правило (один rule за тик — детерминизм каскадов).
+    /// Возвращает true, если хотя бы одно правило сработало (для repeat-while каскада снаружи).
     ///
     /// Порядок events.jsonl: unit_built → unit_evolved × N → stage_up?
-    /// Пропускает эволюцию если evolvesTo.minStage > project.stage (AC edge case).
+    /// Пропускает правило если rule.to.minStage > project.stage (AC edge case).
     @discardableResult
     private func applyEvolutionsIfReady(projectKey: String) -> Bool {
         guard let project = state.projects[projectKey] else { return false }
 
-        // Все юниты квартала (только живые — без decayLevel == 4).
+        // Все юниты квартала (только живые).
         let projectUnits = state.units.values.filter { $0.projectId == projectKey }
 
-        // Группируем по kind.
-        let grouped = Dictionary(grouping: projectUnits, by: { $0.kind })
+        for rule in EvolutionGraph.rules {
+            // 1. Достаточно юнитов from для gate consumeCount.
+            let fromCandidates = projectUnits.filter { $0.kind == rule.from }
+            guard fromCandidates.count >= rule.consumeCount else {
+                print("[EvolutionGraph] \(projectKey): \(rule.from.rawValue)→\(rule.to.rawValue) SKIP: need \(rule.consumeCount) \(rule.from.rawValue), have \(fromCandidates.count)")
+                continue
+            }
 
-        var changed = false
+            // 2. Все требования по окружению выполнены.
+            let allRequirementsMet = rule.requirements.allSatisfy { req in
+                let matching = projectUnits.filter { $0.kind == req.kind && $0.tier >= req.minStage }
+                let met = matching.count >= req.minCount
+                if !met {
+                    print("[EvolutionGraph] \(projectKey): \(rule.from.rawValue)→\(rule.to.rawValue) SKIP req: need \(req.minCount)×\(req.kind.rawValue) tier≥\(req.minStage), have \(matching.count)")
+                }
+                return met
+            }
+            guard allRequirementsMet else { continue }
 
-        for (kind, units) in grouped {
-            // Пропускаем если нет эволюции.
-            guard let targetKind = kind.evolvesTo,
-                  let threshold = kind.evolutionThreshold else { continue }
-            // Порог не достигнут.
-            guard units.count >= threshold else { continue }
-            // Цель недоступна на текущей стадии квартала.
-            guard targetKind.minStage <= project.stage else { continue }
+            // 3. Целевой тип доступен на текущей стадии квартала.
+            guard rule.to.minStage <= project.stage else {
+                print("[EvolutionGraph] \(projectKey): \(rule.from.rawValue)→\(rule.to.rawValue) SKIP: to.minStage \(rule.to.minStage) > project.stage \(project.stage)")
+                continue
+            }
 
-            // Берём ровно `threshold` старейших юнитов: taskTs asc → id asc (детерминировано).
-            let oldest = units
-                .sorted { lhs, rhs in
+            // 4. Берём старейший юнит from: taskTs asc → id asc (детерминировано).
+            guard let oldestUnit = fromCandidates
+                .sorted(by: { lhs, rhs in
                     if lhs.taskTs != rhs.taskTs { return lhs.taskTs < rhs.taskTs }
                     return lhs.id.uuidString < rhs.id.uuidString
-                }
-                .prefix(threshold)
+                })
+                .first else { continue }
 
-            for unit in oldest {
-                let title = "\(unit.id.uuidString)|\(kind.rawValue)|\(targetKind.rawValue)"
-                appendSystemEvent(.unitEvolved, project: projectKey, title: title)
-            }
-            changed = true
+            // 5. MVP consumeCount > 1: эволюционируем только старейший; остальные — gate.
+            let title = "\(oldestUnit.id.uuidString)|\(rule.from.rawValue)|\(rule.to.rawValue)"
+            appendSystemEvent(.unitEvolved, project: projectKey, title: title)
+            print("[EvolutionGraph] \(projectKey): evolved \(rule.from.rawValue)→\(rule.to.rawValue) unit=\(oldestUnit.id)")
+
+            // Один rule за тик — детерминизм каскадов через repeat-while снаружи.
+            return true
         }
 
-        return changed
+        return false
     }
 
     /// Детерминированный выбор руины для нового проекта (F-06).

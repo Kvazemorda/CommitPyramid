@@ -18,6 +18,16 @@ final class AppSettings: ObservableObject {
             }
         }
     }
+    /// F-24: multiplier applied to git-commit weight during performScan.
+    /// Range 0.05…2.0, default 0.1 (≈1 unit per commit regardless of diff size).
+    @Published var commitWeightMultiplier: Double = 0.1 {
+        didSet { commitWeightMultiplier = min(max(commitWeightMultiplier, 0.05), 2.0) }
+    }
+    /// F-24: multiplier for notes/tasks.jsonl ingestion weight during performScan.
+    /// Range 0.5…5.0, default 1.0 (1 unit per closed task).
+    @Published var taskWeightMultiplier: Double = 1.0 {
+        didSet { taskWeightMultiplier = min(max(taskWeightMultiplier, 0.5), 5.0) }
+    }
 
     private static let key = "com.commitpyramid.app.settings"
     private static let legacyKey = "com.outbyte.citydeveloper.settings"
@@ -29,7 +39,9 @@ final class AppSettings: ObservableObject {
         hotkeyModifiers: UInt32,
         catchUpIntervalMinutes: Int = 5,
         notesSources: [NotesSourceSpec] = [],
-        gitRepos: [GitRepoSpec] = []
+        gitRepos: [GitRepoSpec] = [],
+        commitWeightMultiplier: Double = 0.1,
+        taskWeightMultiplier: Double = 1.0
     ) {
         self.tasksJsonlPath = tasksJsonlPath
         self.dataDirectory = dataDirectory
@@ -39,6 +51,8 @@ final class AppSettings: ObservableObject {
         self.gitRepos = gitRepos
         // Clamp on init without triggering didSet (field not yet observed).
         self.catchUpIntervalMinutes = min(max(catchUpIntervalMinutes, 3), 60)
+        self.commitWeightMultiplier = min(max(commitWeightMultiplier, 0.05), 2.0)
+        self.taskWeightMultiplier   = min(max(taskWeightMultiplier,   0.5),  5.0)
     }
 
     static func load() -> AppSettings {
@@ -53,6 +67,7 @@ final class AppSettings: ObservableObject {
            decoded.version >= 1 {
             // Migrate: for v1 files catchUpIntervalMinutes is nil → default 5.
             // v2+ files: notesSources is optional → default [] for backward-compat.
+            // v3+ files: commitWeightMultiplier / taskWeightMultiplier optional → defaults.
             // We never reject version >= 1 to avoid resetting existing settings.
             let interval = max(3, min(60, decoded.catchUpIntervalMinutes ?? 5))
             return AppSettings(
@@ -62,7 +77,9 @@ final class AppSettings: ObservableObject {
                 hotkeyModifiers: decoded.hotkeyModifiers,
                 catchUpIntervalMinutes: interval,
                 notesSources: decoded.notesSources ?? [],
-                gitRepos: decoded.gitRepos ?? []
+                gitRepos: decoded.gitRepos ?? [],
+                commitWeightMultiplier: decoded.commitWeightMultiplier ?? 0.1,
+                taskWeightMultiplier: decoded.taskWeightMultiplier ?? 1.0
             )
         }
         return AppSettings(
@@ -76,14 +93,16 @@ final class AppSettings: ObservableObject {
     func save() {
         let clampedInterval = min(max(catchUpIntervalMinutes, 3), 60)
         let p = Persisted(
-            version: 2,
+            version: 3,
             tasksJsonlPath: tasksJsonlPath,
             dataDirectory: dataDirectory,
             hotkeyKeyCode: hotkeyKeyCode,
             hotkeyModifiers: hotkeyModifiers,
             catchUpIntervalMinutes: clampedInterval,
             notesSources: notesSources.isEmpty ? nil : notesSources,
-            gitRepos: gitRepos.isEmpty ? nil : gitRepos
+            gitRepos: gitRepos.isEmpty ? nil : gitRepos,
+            commitWeightMultiplier: commitWeightMultiplier,
+            taskWeightMultiplier: taskWeightMultiplier
         )
         if let data = try? JSONEncoder().encode(p) {
             UserDefaults.standard.set(data, forKey: AppSettings.key)
@@ -102,5 +121,8 @@ final class AppSettings: ObservableObject {
         let notesSources: [NotesSourceSpec]?
         // Optional for backward-compat: absent field → [] (added in F-19).
         let gitRepos: [GitRepoSpec]?
+        // Optional for backward-compat: absent field → defaults (added in F-24 / v3).
+        let commitWeightMultiplier: Double?
+        let taskWeightMultiplier: Double?
     }
 }

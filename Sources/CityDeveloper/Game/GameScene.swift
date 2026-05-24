@@ -343,14 +343,24 @@ final class GameScene: SKScene {
 
     private func drawUnit(_ unit: UnitState, project: ProjectState, animated: Bool = true) {
         let basePos = isoPosition(grid: unit.position)
-        let span = CGFloat(unit.kind.size.width)
-        // Сдвиг центра спрайта к геометрическому центру NxN-блока в изометрии.
-        let pos = CGPoint(x: basePos.x, y: basePos.y + (span - 1) * tileHeight / 2)
+        let gridSize = unit.kind.size
+        let spanW = CGFloat(gridSize.width)
+        let spanH = CGFloat(gridSize.height)
+        // For multi-cell footprints, shift the sprite up so its base aligns with
+        // the bottom-front corner (anchor = bottom-centre of the full footprint).
+        // y-offset accounts for height dimension in isometric space.
+        let pos = CGPoint(
+            x: basePos.x,
+            y: basePos.y + CGFloat(gridSize.height - 1) * tileHeight / 2
+        )
 
         let node = UnitSprites.makeStageNode(unit: unit, stageOverride: project.stage)
-        node.setScale(span)
+        // Scale uniformly by the larger dimension so the sprite fills the footprint.
+        let scale = max(spanW, spanH)
+        node.setScale(scale)
         node.position = pos
-        node.zPosition = -CGFloat(unit.position.x + unit.position.y)
+        // z-sort: lower-front corner = (x + y + (w-1) + (h-1)); negate for painter's order.
+        node.zPosition = -CGFloat(unit.position.x + unit.position.y + gridSize.width + gridSize.height - 2)
         node.userData = node.userData ?? NSMutableDictionary()
         node.userData?[Self.unitIdKey] = unit.id
         node.userData?[Self.projectIdKey] = unit.projectId
@@ -359,11 +369,11 @@ final class GameScene: SKScene {
         unitNodes[unit.id] = node
 
         if animated {
-            node.setScale(span * 0.4)
+            node.setScale(scale * 0.4)
             node.alpha = 0
             let group = SKAction.group([
                 SKAction.fadeIn(withDuration: 0.4),
-                SKAction.scale(to: span, duration: 0.5),
+                SKAction.scale(to: scale, duration: 0.5),
             ])
             group.timingMode = .easeOut
             node.run(group)

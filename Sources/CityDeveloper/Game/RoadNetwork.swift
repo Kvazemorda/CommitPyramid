@@ -139,6 +139,10 @@ final class RoadNetwork {
     /// Возвращает количество добавленных клеток.
     @discardableResult
     func extendDistrictPlan(projectId: String) -> Int {
+        guard (districtLoopSides[projectId]?.count ?? 0) < 20 else {
+            ErrorsLog.write("RoadNetwork: loop limit 20 reached for \(projectId)")
+            return 0
+        }
         guard let origin   = districtOrigins[projectId],
               let existing = districtPlans[projectId] else { return 0 }
 

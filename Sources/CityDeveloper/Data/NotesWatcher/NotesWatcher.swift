@@ -34,6 +34,8 @@ final class NotesWatcher: EventSource, @unchecked Sendable {
     // MARK: - Dependencies
 
     weak var engine: CityEngine?
+    /// F-24: read taskWeightMultiplier during performScan (applied on next Reset, not live).
+    weak var appSettings: AppSettings?
 
     // MARK: - Private state (accessed only on `queue`)
 
@@ -149,16 +151,25 @@ final class NotesWatcher: EventSource, @unchecked Sendable {
             // Get file modification time for event timestamp
             let mtime = (try? FileManager.default.attributesOfItem(atPath: fileURL.path))?[.modificationDate] as? Date ?? Date()
 
+            // F-24: apply taskWeightMultiplier — repeat ingest N times (≥1) per task.
+            let multiplier = appSettings?.taskWeightMultiplier ?? 1.0
+            let repeatCount = max(1, Int(round(multiplier)))
+
             // Ingest on main queue (synchronously to ensure dedup before sidecar write).
             // Use the idempotent variant — dedup by source key in events.jsonl.
-            DispatchQueue.main.sync { [weak self] in
-                self?.engine?.ingestTaskCompletionIfUnique(
-                    project: parsed.projectId,
-                    title: parsed.title,
-                    taskId: nil,
-                    source: sourceKey,
-                    ts: mtime
-                )
+            for j in 0..<repeatCount {
+                let suffix = repeatCount > 1 ? "#\(j)" : ""
+                let key = "\(sourceKey)\(suffix)"
+                let ts = mtime.addingTimeInterval(Double(j) * 0.001)
+                DispatchQueue.main.sync { [weak self] in
+                    self?.engine?.ingestTaskCompletionIfUnique(
+                        project: parsed.projectId,
+                        title: parsed.title,
+                        taskId: nil,
+                        source: key,
+                        ts: ts
+                    )
+                }
             }
 
             // Post-processing

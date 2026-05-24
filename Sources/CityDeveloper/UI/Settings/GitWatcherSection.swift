@@ -26,6 +26,18 @@ struct GitWatcherSection: View {
     var body: some View {
         GroupBox("Git watcher") {
             VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Вес коммита:")
+                        Slider(value: $settings.commitWeightMultiplier, in: 0.05...2.0, step: 0.05)
+                            .onChange(of: settings.commitWeightMultiplier) { _ in settings.save() }
+                        Text(String(format: "×%.2f", settings.commitWeightMultiplier))
+                            .monospacedDigit().frame(width: 50)
+                    }
+                }
+                .help("Множитель количества юнитов на один коммит. 0.1 = почти всегда 1 юнит. 1.0 = 1-5 юнитов по размеру diff. Применяется при следующем Reset.")
+                .padding(.bottom, 4)
+
                 if settings.gitRepos.isEmpty {
                     Text("Репозитории не добавлены. Нажмите «Добавить репозиторий» чтобы подключить локальный git-репо, или «Сканировать папку…» чтобы массово найти все .git внутри указанного каталога.")
                         .font(.caption)

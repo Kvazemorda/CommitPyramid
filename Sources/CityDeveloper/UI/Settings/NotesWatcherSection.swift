@@ -27,6 +27,18 @@ struct NotesWatcherSection: View {
         GroupBox("Notes watcher") {
             VStack(alignment: .leading, spacing: 8) {
 
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Вес задачи:")
+                        Slider(value: $settings.taskWeightMultiplier, in: 0.5...5.0, step: 0.5)
+                            .onChange(of: settings.taskWeightMultiplier) { _ in settings.save() }
+                        Text(String(format: "×%.1f", settings.taskWeightMultiplier))
+                            .monospacedDigit().frame(width: 50)
+                    }
+                }
+                .help("Множитель числа юнитов на одну закрытую задачу из заметок/tasks.jsonl. Применяется при следующем Reset.")
+                .padding(.bottom, 4)
+
                 if settings.notesSources.isEmpty {
                     Text("Источники не добавлены. Нажмите «Добавить источник» чтобы подключить .md-файл или папку.")
                         .font(.caption)
