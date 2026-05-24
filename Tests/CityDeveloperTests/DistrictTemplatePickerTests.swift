@@ -4,10 +4,14 @@ import XCTest
 final class DistrictTemplatePickerTests: XCTestCase {
 
     func test_ReturnsNilForUnknownFamily() {
+        // После TASK-051: неизвестная family → availability fallback на "egyptian".
+        // Nil возвращается только когда stage 99 (нет шаблонов для этого stage).
         let result = DistrictTemplatePicker.pick(
             stage: 1, family: "klingon", biome: nil, seed: 1
         )
-        XCTAssertNil(result)
+        // Availability fallback → egyptian → шаблон stage 1 существует
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.family, "egyptian")
     }
 
     func test_ReturnsNilForUnsupportedStage() {
@@ -34,11 +38,37 @@ final class DistrictTemplatePickerTests: XCTestCase {
         XCTAssertEqual(r1?.name, r2?.name)
     }
 
-    func test_AutoFamilyMapsToEgyptianMVP() {
-        let result = DistrictTemplatePicker.pick(
-            stage: 1, family: "auto", biome: .meadow, seed: 1
-        )
-        XCTAssertEqual(result?.family, "egyptian")
+    func test_AutoFamily_MeadowMapsToEgyptian() {
+        let t = DistrictTemplatePicker.pick(stage: 1, family: "auto", biome: .meadow, seed: 1)
+        XCTAssertEqual(t?.family, "egyptian")  // mapping meadow → egyptian, шаблон существует
+    }
+
+    func test_AutoFamily_DesertMapsToEgyptian() {
+        let t = DistrictTemplatePicker.pick(stage: 1, family: "auto", biome: .desert, seed: 1)
+        XCTAssertEqual(t?.family, "egyptian")
+    }
+
+    func test_AutoFamily_MountainFallsBackToEgyptianInMVP() {
+        // mapping mountain → roman, но roman нет в MVP → availability fallback egyptian + warning
+        let t = DistrictTemplatePicker.pick(stage: 1, family: "auto", biome: .mountain, seed: 1)
+        XCTAssertEqual(t?.family, "egyptian")
+    }
+
+    func test_AutoFamily_SeaFallsBackToEgyptianInMVP() {
+        let t = DistrictTemplatePicker.pick(stage: 1, family: "auto", biome: .sea, seed: 1)
+        XCTAssertEqual(t?.family, "egyptian")
+    }
+
+    func test_AutoFamily_NilBiomeMapsToEgyptian() {
+        let t = DistrictTemplatePicker.pick(stage: 1, family: "auto", biome: nil, seed: 1)
+        XCTAssertEqual(t?.family, "egyptian")
+    }
+
+    func test_InvalidFamilyFallsBackToEgyptian() {
+        // Пользователь выбрал "roman" в Settings, но в MVP roman нет в catalog.
+        // Availability fallback переводит на "egyptian", шаблон возвращается с family="egyptian".
+        let t = DistrictTemplatePicker.pick(stage: 1, family: "roman", biome: .meadow, seed: 1)
+        XCTAssertEqual(t?.family, "egyptian")
     }
 
     func test_MixedFamilyPicksFromAvailable() {

@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             snapshotStore: snapshotStore
         )
 
+        engine.templateFamily = appSettings.templateFamily
+
         decayEngine = DecayEngine()
         decayEngine.cityEngine = engine
 
@@ -50,6 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scene.size = screen.frame.size
         scene.scaleMode = .resizeFill
         scene.engine = engine
+        scene.appSettings = appSettings
         scene.worldMap = worldMapProvider.map
 
         engine.onUnitBuilt = { [weak self] unit, project in
@@ -200,6 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applySettings() {
         watcher.restart(at: appSettings.tasksJsonlPath)
+        engine.templateFamily = appSettings.templateFamily
         engine.relocateEventLog(to: appSettings.dataDirectory)
         engine.relocateSnapshotStore(to: appSettings.dataDirectory)
         engine.saveSnapshot()

@@ -1,6 +1,49 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-24 (прогон TASK-050 — F-25 6/7, era progression + monumental/legacy шаблоны)_
+_Актуально на: 2026-05-24 (прогон TASK-051 — F-25 финал: Settings UI «Стиль города»)_
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 7: F-25 финал — TASK-051)
+
+**Закрыто:**
+- TASK-051 (D-25 часть 5/5) — Settings UI «Стиль города» + AppDelegate wire + biome-mapping:
+  - `AppDelegate.swift` — два wire-точки `engine.templateFamily = appSettings.templateFamily`:
+    initial (после создания engine) и reactive (в `applySettings()`). Плюс
+    `scene.appSettings = appSettings` для silhouette overlay.
+  - `DistrictTemplatePicker.resolveAutoFamily(biome:)` — новый pure helper:
+    biome-based mapping (meadow/desert → egyptian, mountain/stone → roman,
+    sea/river → greek, forest/nil → egyptian). Заменяет MVP hardcode "egyptian".
+  - Availability fallback в `pick(...)`: после resolve проверяется
+    `availableFamilies().contains(resolved)`. Если family отсутствует в catalog
+    (MVP: только egyptian) → warning в errors.log + fallback на "egyptian".
+  - `GameScene.appSettings: AppSettings?` (weak var) — для silhouette overlay.
+  - `GameScene.drawTemplateSilhouette(project:template:)` — новый private helper:
+    SKShapeNode-контуры слотов шаблона (diamond-geometry), alpha 0.3,
+    SKAction.sequence fadeIn(0.2) → wait(2.6) → fadeOut(0.2) → removeFromParent.
+    Триггер внутри `drawDistrictMarker` — только при `previewTemplateSilhouette == true`
+    и `project.templateName != nil`.
+  - `SettingsView` — новая секция `TemplateFamilySection` между GitWatcherSection и
+    Reset & Rebuild: Picker «Стиль города» (.menu style, auto/mixed/Египет), Toggle
+    «Превью контура шаблона», caption tooltip. Inline private struct в конце файла.
+  - 7 новых тестов в `DistrictTemplatePickerTests` (6 biome-mapping + 1 fallback),
+    удалён старый `test_AutoFamilyMapsToEgyptianMVP` (MVP hardcode).
+    `test_ReturnsNilForUnknownFamily` обновлён под новое поведение (availability fallback).
+  - 1 новый тест в `AppSettingsV4MigrationTests` (`test_TemplateFamilyPersistsAnyString`).
+  - Lead-model: sonnet (revised, plan-review round 2 approved). Run: sonnet executor.
+
+**Прогресс F-25:** 7 из 7 sub-task'ов ✅ — F-25 закрыта полностью.
+Egyptian-only первая итерация; Roman/Greek families — follow-up в Backlog (content task).
+
+**Результат `swift test`:** 131/132 — 1 known-fail (BUG-020) = 131 PASS.
+
+**Изменения файлов за TASK-051:**
+- `Sources/CityDeveloper/App/AppDelegate.swift` (wire engine.templateFamily × 2 + scene.appSettings)
+- `Sources/CityDeveloper/Game/Templates/DistrictTemplatePicker.swift` (resolveAutoFamily + availability fallback)
+- `Sources/CityDeveloper/Game/GameScene.swift` (weak var appSettings + drawTemplateSilhouette + trigger in drawDistrictMarker)
+- `Sources/CityDeveloper/UI/SettingsView.swift` (TemplateFamilySection call + inline struct)
+- `Tests/CityDeveloperTests/DistrictTemplatePickerTests.swift` (6 новых + обновление 2 тестов)
+- `Tests/CityDeveloperTests/AppSettingsV4MigrationTests.swift` (+1 тест persistence)
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-24 (часть 6: F-25 эпохи — TASK-050)
 
@@ -349,7 +392,7 @@ TASK-050 (era progression), TASK-051 (Settings UI).
 
 **Легенда:** ✅ полностью реализована | ⚠️ частично | ❌ отсутствует
 
-**Сходимость:** 17/19 фич закрыто (89%) + 2 частично (F-15 ⚠️ остался TASK-030 — реинициализация карты; F-16 ⚠️ остался TASK-038 тесты UnitPlanner) + 1 новая ❌ (F-21 open-source). D-02 закрыт 2026-05-23.
+**Сходимость:** 18/22 фич закрыто (82%): F-01..F-14 ✅, F-17..F-20 ✅, F-23 ✅, F-24 ✅, **F-25 ✅ (TASK-047/048a/048b/048c/049/050/051 — egyptian family полностью, Roman/Greek — Backlog)**. F-15 ⚠️ (остался TASK-030 реинициализация карты). F-16 ⚠️ (остался TASK-040 контент-арт, blocked-by F-21). F-21 ❌ open-source. F-22 ❌ не начата.
 
 ## Что увидит пользователь при запуске
 

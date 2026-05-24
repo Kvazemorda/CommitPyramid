@@ -113,6 +113,8 @@ struct SettingsView: View {
                     onRepoRemoved: { [weak gitWatcher] id   in gitWatcher?.unregister(id: id) }
                 )
 
+                TemplateFamilySection(settings: settings)
+
                 GroupBox("Reset & Rebuild") {
                     VStack(alignment: .leading, spacing: 8) {
                         DatePicker("Replay events since:",
@@ -291,5 +293,46 @@ struct HotkeyRecorderView: View {
         default: p.append("(\(code))")
         }
         return p.joined()
+    }
+}
+
+// TASK-051 F-25: секция выбора стиля города (templateFamily + silhouette debug toggle).
+private struct TemplateFamilySection: View {
+    @ObservedObject var settings: AppSettings
+
+    var body: some View {
+        GroupBox(label: Label("Стиль города", systemImage: "building.columns")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Стиль:", selection: $settings.templateFamily) {
+                    Text("Auto (по биому)").tag("auto")
+                    Text("Mixed (рандом на проект)").tag("mixed")
+                    ForEach(availableFamilies, id: \.self) { f in
+                        Text(humanName(f)).tag(f)
+                    }
+                }
+                .pickerStyle(.menu)
+                Toggle(
+                    "Превью контура шаблона при создании квартала (debug)",
+                    isOn: $settings.previewTemplateSilhouette
+                )
+                Text("Влияет только на новые проекты. Существующие кварталы сохраняют свой стиль.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var availableFamilies: [String] {
+        DistrictTemplateCatalog.availableFamilies().sorted()
+    }
+
+    private func humanName(_ family: String) -> String {
+        switch family {
+        case "egyptian": return "Египет"
+        case "roman":    return "Рим"
+        case "greek":    return "Греция"
+        default:         return family.capitalized
+        }
     }
 }

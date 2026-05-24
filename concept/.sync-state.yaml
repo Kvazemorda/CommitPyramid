@@ -28,4 +28,4 @@ feature_stability:
   F-22: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
   F-23: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
   F-24: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-25: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }  # 6/7: TASK-047/048a/048b/048c/049/050 done; осталась TASK-051 (Settings UI)
+  F-25: { status: "✅", consecutive_ok: 1, collapse_skipped: false }  # 7/7: TASK-051 закрыт (Settings UI + AppDelegate wire + biome-mapping); egyptian-only первая итерация; Roman/Greek follow-up Backlog

@@ -12,7 +12,18 @@ enum DistrictTemplatePicker {
     ) -> DistrictTemplate? {
         // 1. Resolve family
         let resolved = resolveFamily(family, biome: biome, seed: seed)
-        guard let resolvedFamily = resolved else { return nil }
+        guard let resolved else { return nil }
+
+        // TASK-051: availability fallback. resolved может быть несуществующей в catalog family
+        // (например, пользователь выбрал "roman" в Settings, но MVP содержит только "egyptian").
+        let available = DistrictTemplateCatalog.availableFamilies()
+        let resolvedFamily: String
+        if available.contains(resolved) {
+            resolvedFamily = resolved
+        } else {
+            ErrorsLog.write("[template] family '\(resolved)' not available in catalog, falling back to 'egyptian'")
+            resolvedFamily = "egyptian"
+        }
 
         // 2. Кандидаты (era-templates excluded — assigned only via applyEraProgression)
         let allCandidates = DistrictTemplateCatalog.byStage(stage, family: resolvedFamily)
@@ -46,8 +57,7 @@ enum DistrictTemplatePicker {
     ) -> String? {
         switch family {
         case "auto":
-            // MVP: только egyptian в catalog. TASK-051 follow-up: roman/greek.
-            return "egyptian"
+            return resolveAutoFamily(biome: biome)
         case "mixed":
             let available = DistrictTemplateCatalog.availableFamilies().sorted()
             guard !available.isEmpty else { return nil }
@@ -57,6 +67,17 @@ enum DistrictTemplatePicker {
             return available[idx]
         default:
             return family
+        }
+    }
+
+    /// TASK-051 F-25: biome → дефолтная family для "auto" режима.
+    private static func resolveAutoFamily(biome: BiomeKind?) -> String {
+        guard let biome else { return "egyptian" }
+        switch biome {
+        case .meadow, .desert: return "egyptian"
+        case .mountain, .stone: return "roman"
+        case .sea, .river: return "greek"
+        case .forest: return "egyptian"
         }
     }
 }

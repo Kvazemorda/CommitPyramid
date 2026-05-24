@@ -6,6 +6,7 @@ final class GameScene: SKScene {
 
     weak var engine: CityEngine?
     weak var bridge: SceneBridge?
+    weak var appSettings: AppSettings?
 
     private let world = SKNode()
 
@@ -750,6 +751,47 @@ final class GameScene: SKScene {
         container.zPosition = 9999
         world.addChild(container)
         districtNodes[project.id] = container
+
+        if appSettings?.previewTemplateSilhouette == true,
+           let templateName = project.templateName,
+           let template = DistrictTemplateCatalog.byName(templateName) {
+            drawTemplateSilhouette(project: project, template: template)
+        }
+    }
+
+    private func drawTemplateSilhouette(project: ProjectState, template: DistrictTemplate) {
+        let container = SKNode()
+        container.zPosition = 5000  // поверх маркера, ниже UI
+        container.alpha = 0.0
+        let origin = project.districtOrigin
+        for slot in template.slots {
+            let path = CGMutablePath()
+            for dx in 0..<slot.footprint.width {
+                for dy in 0..<slot.footprint.height {
+                    let cell = GridPoint(x: origin.x + slot.x + dx, y: origin.y + slot.y + dy)
+                    let pos = isoPosition(grid: cell)
+                    // diamond вокруг pos (геометрия идентична diamondPath())
+                    path.move(to:    CGPoint(x: pos.x,                     y: pos.y + tileHeight / 2))
+                    path.addLine(to: CGPoint(x: pos.x + tileWidth / 2,     y: pos.y))
+                    path.addLine(to: CGPoint(x: pos.x,                     y: pos.y - tileHeight / 2))
+                    path.addLine(to: CGPoint(x: pos.x - tileWidth / 2,     y: pos.y))
+                    path.closeSubpath()
+                }
+            }
+            let shape = SKShapeNode(path: path)
+            shape.strokeColor = .systemBlue
+            shape.fillColor = SKColor.systemBlue.withAlphaComponent(0.3)
+            shape.lineWidth = 1.5
+            container.addChild(shape)
+        }
+        world.addChild(container)
+        let seq = SKAction.sequence([
+            SKAction.fadeAlpha(to: 0.3, duration: 0.2),
+            SKAction.wait(forDuration: 2.6),
+            SKAction.fadeAlpha(to: 0.0, duration: 0.2),
+            SKAction.removeFromParent()
+        ])
+        container.run(seq)
     }
 
     func isoPosition(grid: GridPoint) -> CGPoint {

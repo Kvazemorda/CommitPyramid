@@ -66,4 +66,15 @@ final class AppSettingsV4MigrationTests: XCTestCase {
         XCTAssertEqual(s2.templateFamily, "egyptian")
         XCTAssertEqual(s2.previewTemplateSilhouette, true)
     }
+
+    func test_TemplateFamilyPersistsAnyString() throws {
+        // AppSettings хранит любую строку — fallback в Picker, не здесь.
+        let a = AppSettings.load()
+        a.templateFamily = "roman"            // строка, даже если family отсутствует в catalog
+        a.previewTemplateSilhouette = true
+        a.save()
+        let b = AppSettings.load()
+        XCTAssertEqual(b.templateFamily, "roman")
+        XCTAssertTrue(b.previewTemplateSilhouette)
+    }
 }

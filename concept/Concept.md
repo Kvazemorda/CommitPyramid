@@ -864,3 +864,8 @@ Kahun-сетку, существующие хижины остаются на с
 egyptian-family), которое не появлялось раньше. Replay 5000 событий
 воспроизводит выбор шаблонов и era-up детерминированно. Переключение
 templateFamily в Settings влияет только на следующие новые проекты.
+
+**Статус реализации (2026-05-24):** Egyptian-only первая итерация ✅ полностью
+реализована (TASK-047/048a/048b/048c/049/050/051). Roman family (5 stage JSON)
+и Greek family (5 stage JSON) — follow-up задачи в Backlog; код Picker/Engine/Scene
+уже поддерживает их через availability fallback (без JSON → fallback на egyptian).
