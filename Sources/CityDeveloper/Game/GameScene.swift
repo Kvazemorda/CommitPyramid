@@ -646,6 +646,16 @@ final class GameScene: SKScene {
         }
     }
 
+    /// BUG-017/018: Публичный entry-point — вызывается из engine.onRoadCellsAdded
+    /// когда реактивный extendDistrictPlan добавил клетки. Async на main, чтобы
+    /// не задерживать ingest-цикл.
+    func drawAddedRoadCells(_ cells: [GridPoint]) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.didAttach else { return }
+            self.drawRoadCells(cells)
+        }
+    }
+
     private func drawDistrictMarker(for project: ProjectState) {
         if districtNodes[project.id] != nil { return }
 

@@ -308,22 +308,45 @@ struct UnitPlanner {
             return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
         }
 
-        // Собираем ВСЕ свободные кандидаты: depth ∈ 1...5, anchor ∈ nearby, side ∈ [+1,-1].
-        // Порядок детерминирован (nearby.sorted уже сортирован по (y,x)).
+        // BUG-017/018: ТОЛЬКО depth=1 от anchor — гарантирует, что front-edge
+        // здания касается дороги. Плюс мы пробуем ВСЕ 4 кардинальных направления
+        // (не только perpendicular axis), чтобы здание могло «прислониться»
+        // любой стороной. Плюс пробуем разные origin-углы footprint'а NxM
+        // (anchor может быть с любой стороны здания, а не только перед его
+        // нижне-левым углом).
+        //
+        // Для здания W×H анкорная клетка road может находиться с любой из 4 сторон:
+        //   - снизу (anchor.y = pos.y - 1)  → pos = (anchor.x - dx, anchor.y + 1), dx ∈ 0..<W
+        //   - сверху (anchor.y = pos.y + H) → pos = (anchor.x - dx, anchor.y - H), dx ∈ 0..<W
+        //   - слева  (anchor.x = pos.x - 1) → pos = (anchor.x + 1, anchor.y - dy), dy ∈ 0..<H
+        //   - справа (anchor.x = pos.x + W) → pos = (anchor.x - W, anchor.y - dy), dy ∈ 0..<H
+        //
+        // Для каждого варианта footprintBlocked отсеивает overlap с дорогой/застройкой.
+        // Дополнительно footprintAdjacentToRoad(пов) подтверждает требование adjacency.
+        let W = unitSize.width
+        let H = unitSize.height
         var candidates: [GridPoint] = []
-        for depth in 1...5 {
-            for anchor in nearby {
-                let perp = perpendicularAxis(at: anchor, roads: roadCells)
-                for side in [1, -1] {
-                    let candidate = GridPoint(
-                        x: anchor.x + perp.dx * side * depth,
-                        y: anchor.y + perp.dy * side * depth
-                    )
-                    if footprintBlocked(at: candidate, size: unitSize, roads: roadCells, built: builtCells) {
-                        continue
-                    }
-                    candidates.append(candidate)
-                }
+        var seen = Set<GridPoint>()
+        for anchor in nearby {
+            // anchor снизу: pos.y = anchor.y + 1, pos.x варьируем
+            for dx in 0..<W {
+                let pos = GridPoint(x: anchor.x - dx, y: anchor.y + 1)
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
+            }
+            // anchor сверху: pos.y = anchor.y - H, pos.x варьируем
+            for dx in 0..<W {
+                let pos = GridPoint(x: anchor.x - dx, y: anchor.y - H)
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
+            }
+            // anchor слева: pos.x = anchor.x + 1, pos.y варьируем
+            for dy in 0..<H {
+                let pos = GridPoint(x: anchor.x + 1, y: anchor.y - dy)
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
+            }
+            // anchor справа: pos.x = anchor.x - W, pos.y варьируем
+            for dy in 0..<H {
+                let pos = GridPoint(x: anchor.x - W, y: anchor.y - dy)
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
             }
         }
 
@@ -332,6 +355,31 @@ struct UnitPlanner {
 
         // Детерминированный выбор: i-й кандидат по кругу (не выходим за пределы петель).
         return candidates[i % candidates.count]
+    }
+
+    /// Добавляет position в candidates, если footprint не блокирован (overlap с
+    /// дорогой/застройкой) И касается дороги хотя бы одной стороной. Inline helper
+    /// для уменьшения дублирования в nextPosition.
+    private func append(_ candidates: inout [GridPoint], _ pos: GridPoint,
+                        size: GridSize, roads: Set<GridPoint>, built: Set<GridPoint>) {
+        if footprintBlocked(at: pos, size: size, roads: roads, built: built) { return }
+        if !footprintAdjacentToRoad(at: pos, size: size, roads: roads) { return }
+        candidates.append(pos)
+    }
+
+    /// BUG-017: проверяет, что хотя бы одна клетка footprint'а смежна (4-cardinal)
+    /// с road-клеткой. Без этой проверки здания могут «висеть в воздухе» вдали от дорог.
+    private func footprintAdjacentToRoad(at pos: GridPoint, size: GridSize, roads: Set<GridPoint>) -> Bool {
+        for dx in 0..<size.width {
+            for dy in 0..<size.height {
+                let cell = GridPoint(x: pos.x + dx, y: pos.y + dy)
+                if roads.contains(GridPoint(x: cell.x - 1, y: cell.y)) { return true }
+                if roads.contains(GridPoint(x: cell.x + 1, y: cell.y)) { return true }
+                if roads.contains(GridPoint(x: cell.x, y: cell.y - 1)) { return true }
+                if roads.contains(GridPoint(x: cell.x, y: cell.y + 1)) { return true }
+            }
+        }
+        return false
     }
 
     /// Перпендикулярная ось от road-клетки.

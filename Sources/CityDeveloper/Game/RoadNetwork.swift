@@ -136,15 +136,23 @@ final class RoadNetwork {
     /// Достраивает к плану ещё одну петлю — на противоположной стороне магистрали
     /// (или на следующей по перпендикулярной глубине, если обе стороны заняты).
     /// Используется, когда первая петля заполнена зданиями и нужно расширение.
-    /// Возвращает количество добавленных клеток.
+    ///
+    /// **Важно:** новые клетки сразу добавляются в `allCells` (резервируются как
+    /// «road»), чтобы UnitPlanner.nextPosition тут же видел их как anchor'ы для
+    /// adjacency-проверки. Иначе реактивный цикл в CityEngine получает план,
+    /// но allCells не растёт → следующая попытка nextPosition даёт тот же
+    /// результат (BUG-017/018 первопричина).
+    ///
+    /// Возвращает массив новых клеток — caller отрисовывает их через
+    /// `engine.onRoadCellsAdded` callback (GameScene.drawRoadCells).
     @discardableResult
-    func extendDistrictPlan(projectId: String) -> Int {
+    func extendDistrictPlan(projectId: String) -> [GridPoint] {
         guard (districtLoopSides[projectId]?.count ?? 0) < 20 else {
             ErrorsLog.write("RoadNetwork: loop limit 20 reached for \(projectId)")
-            return 0
+            return []
         }
         guard let origin   = districtOrigins[projectId],
-              let existing = districtPlans[projectId] else { return 0 }
+              let existing = districtPlans[projectId] else { return [] }
 
         let usedSides = districtLoopSides[projectId] ?? []
         // Следующая сторона: противоположная первой; если уже две — циклим.
@@ -169,9 +177,16 @@ final class RoadNetwork {
             seen.insert(cell)
             guard !allCells.contains(cell) else { continue }
             added.append(cell)
+            // Сразу резервируем как road — adjacency-anchor для последующих зданий.
+            allCells.insert(cell)
         }
         districtPlans[projectId] = existing + added
-        return added.count
+        // Также помечаем «новые» клетки как уже построенные — следующие
+        // road-задачи квартала пропустят их через consumeNextPlanCell
+        // (он будет двигать индекс плана, но clip к ним не вернётся).
+        let prevBuilt = districtPlanBuilt[projectId] ?? 0
+        districtPlanBuilt[projectId] = prevBuilt + added.count
+        return added
     }
 
     /// Сколько петель уже привязано к кварталу (1 после planDistrict, 2 после первого extend, …).

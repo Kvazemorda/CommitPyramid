@@ -27,6 +27,10 @@ final class CityEngine: ObservableObject {
     /// TASK-034 F-16: вызывается при эволюции юнита (live-тик, !silent).
     /// Параметры: unitId, fromKind, toKind, projectId.
     var onUnitEvolved: ((UUID, UnitKind, UnitKind, String) -> Void)?
+    /// BUG-017/018: вызывается при добавлении новых road-клеток через
+    /// extendDistrictPlan (реактивно при заполнении петли). GameScene
+    /// рисует эти клетки сразу — иначе они в allCells, но визуально пусто.
+    var onRoadCellsAdded: (([GridPoint]) -> Void)?
 
     /// TASK-035 F-16: биом-карта для передачи в UnitPlanner.
     /// Задаётся из GameScene после построения BiomeMap (опционально; nil → uniform weights).
@@ -303,7 +307,10 @@ final class CityEngine: ObservableObject {
             let buildingsSoFar = projectUnits.filter { $0.kind != .road }.count
             let capacity = RoadNetwork.loopInteriorCapacity * max(1, rn.loopCount(for: projectKey))
             if buildingsSoFar >= capacity {
-                rn.extendDistrictPlan(projectId: projectKey)
+                let added = rn.extendDistrictPlan(projectId: projectKey)
+                if !silent && !added.isEmpty {
+                    onRoadCellsAdded?(added)
+                }
             }
         }
 
@@ -361,8 +368,9 @@ final class CityEngine: ObservableObject {
                 )
                 if foundPos == nil {
                     extends += 1
-                    let added = roadNetwork?.extendDistrictPlan(projectId: projectKey) ?? 0
-                    if added == 0 { break }
+                    let added = roadNetwork?.extendDistrictPlan(projectId: projectKey) ?? []
+                    if added.isEmpty { break }
+                    if !silent { onRoadCellsAdded?(added) }
                 }
             }
             guard let resolved = foundPos else {

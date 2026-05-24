@@ -75,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onUnitEvolved = { [weak self] uid, from, to, projectId in
             self?.scene?.handleUnitEvolved(unitId: uid, from: from, to: to, projectId: projectId)
         }
+        // BUG-017/018: реактивный extendDistrictPlan добавил road-клетки —
+        // нужно их сразу нарисовать (иначе резерв в allCells без визуала).
+        engine.onRoadCellsAdded = { [weak self] cells in
+            self?.scene?.drawAddedRoadCells(cells)
+        }
 
         bridge = SceneBridge()
         bridge.scene = scene
@@ -273,6 +278,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         engine.onUnitEvolved = { [weak self] uid, from, to, projectId in
             self?.scene?.handleUnitEvolved(unitId: uid, from: from, to: to, projectId: projectId)
+        }
+        // BUG-017/018: реактивный extendDistrictPlan добавил road-клетки —
+        // нужно их сразу нарисовать (иначе резерв в allCells без визуала).
+        engine.onRoadCellsAdded = { [weak self] cells in
+            self?.scene?.drawAddedRoadCells(cells)
         }
 
         // 8. Reconnect scene to new engine and new world map, then reload.
