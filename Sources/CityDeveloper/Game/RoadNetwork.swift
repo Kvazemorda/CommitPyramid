@@ -3,8 +3,10 @@ import Foundation
 // MARK: - RoadNetwork
 //
 // Дорожная сеть города:
-//   1. Магистраль (mainRoad) — синусоидальная диагональ SW→NE через всю карту, строится один раз.
-//   2. Для каждого квартала — план дорог (branch к магистрали + кольцо вокруг origin).
+//   1. Магистраль (mainRoad) — грид-линия gy = midY через весь ромб карты.
+//      В iso-проекции это диагональ экрана от середины левого-нижнего ребра
+//      (LEFT→BOTTOM) к середине правого-верхнего (RIGHT→TOP), проходящая через центр.
+//   2. Для каждого квартала — план дорог (петля по обе стороны от магистрали).
 //      План строится покритично, клетка за клеткой: каждая закрытая задача даёт одну клетку
 //      .road, пока план не исчерпан. Затем планировщик переходит на здания.
 //
@@ -29,61 +31,59 @@ final class RoadNetwork {
     private var districtPlanBuilt: [String: Int] = [:]
     /// Origin квартала — нужен для extendDistrictPlan (вторая петля).
     private var districtOrigins: [String: GridPoint] = [:]
+    /// Стороны магистрали (outV), которые УЖЕ заняты петлями этого квартала.
+    /// Используется extendDistrictPlan — следующая петля идёт на противоположную сторону.
+    private var districtLoopSides: [String: [Int]] = [:]
 
-    /// Половина длины петли вдоль магистрали (loop = 2*halfW+1 в ширину).
-    /// halfW=4 → 9 клеток вдоль mag.
-    static let loopHalfWidth = 4
-    /// Глубина петли перпендикулярно магистрали (5 клеток от mag).
+    /// Половина длины петли вдоль магистрали (loop = 2*halfW+1 клеток).
+    /// halfW=3 → 7 вдоль mag.
+    static let loopHalfWidth = 3
+    /// Глубина петли перпендикулярно магистрали (v=1..depth).
     static let loopDepth = 5
-    /// Вместимость интерьера петли (для логики «добавить ещё петлю»).
-    static let loopInteriorCapacity = (loopHalfWidth * 2 - 1) * (loopDepth - 1)  // 7*4 = 28
+    /// Вместимость интерьера одной петли (для логики «добавить ещё петлю»).
+    /// (2*halfW-1) × (depth-1) = 5×4 = 20 буильдабельных клеток.
+    static let loopInteriorCapacity = (loopHalfWidth * 2 - 1) * (loopDepth - 1)
 
     // MARK: - Public API
 
-    /// Точка входа в город — первая клетка магистрали у края карты (SW).
+    /// Точка входа в город — первая клетка магистрали у края карты (середина LEFT→BOTTOM).
     var entryPoint: GridPoint? { mainRoadCells.first }
 
-    /// Строит магистраль вдоль оси +gx (gx: 0 → cols-1) при gy ≈ rows/2.
-    /// В iso-проекции это диагональ экрана от SW (лево-низ) к NE (право-верх).
-    /// Извив — синусом по gy, перпендикулярно направлению движения.
-    /// Море остаётся в фиксированном углу (gy ≈ 0) — магистраль его не пересекает.
+    /// Строит магистраль по грид-линии gy = midY: от grid(0, midY) до grid(cols-1, midY).
+    /// В iso-проекции это прямая через центр карты от середины левого-нижнего ребра
+    /// (gx=0) к середине правого-верхнего (gx=cols-1), под углом ровно вдоль ромба.
+    ///
+    /// Защита от моря: если клетка (k, midY) попала в .sea — смещаемся вдоль ±gy
+    /// до первой не-морской клетки. Море в нижне-правом ребре карты (gy≈0)
+    /// до midY не доходит, но защита остаётся на случай экзотических сидов.
     func buildMainRoad(cols: Int, rows: Int, biomeReader: BiomeMapReader) {
-        let midY      = Double(rows - 1) * 0.5
-        let amplitude: Double = 14    // отклонение в тайлах от центральной линии
-        let waves:     Double = 2.5
-
-        let steps = cols * 3
-
+        let midY = rows / 2
         var cells: [GridPoint] = []
-        var lastAdded: GridPoint? = nil
+        cells.reserveCapacity(cols)
 
-        for step in 0...steps {
-            let t = Double(step) / Double(steps)
-
-            let gxF = t * Double(cols - 1)
-            let gyF = midY + amplitude * sin(t * waves * .pi * 2)
-
-            let cx = max(0, min(cols - 1, Int(gxF.rounded())))
-            var cy = max(0, min(rows - 1, Int(gyF.rounded())))
-
-            // Море при gy≈0; магистраль идёт при mid_y, пересечений быть не должно.
-            // Защитный обход: если попали — двигаемся вверх по gy.
-            if biomeReader.biome(atX: cx, y: cy) == .sea {
-                var found = false
-                for delta in 1...20 {
-                    let ny = cy + delta
-                    if ny < rows, biomeReader.biome(atX: cx, y: ny) != .sea {
-                        cy = ny; found = true; break
+        for k in 0..<cols {
+            var p = GridPoint(x: k, y: midY)
+            if biomeReader.biome(atX: p.x, y: p.y) == .sea {
+                var found: GridPoint? = nil
+                for delta in 1...30 {
+                    let candidates = [
+                        GridPoint(x: k, y: midY + delta),
+                        GridPoint(x: k, y: midY - delta),
+                    ]
+                    for c in candidates {
+                        guard c.x >= 0, c.x < cols, c.y >= 0, c.y < rows else { continue }
+                        if biomeReader.biome(atX: c.x, y: c.y) != .sea {
+                            found = c
+                            break
+                        }
                     }
+                    if found != nil { break }
                 }
-                if !found { continue }
+                guard let fp = found else { continue }
+                p = fp
             }
-
-            let p = GridPoint(x: cx, y: cy)
-            guard p != lastAdded else { continue }
             cells.append(p)
             allCells.insert(p)
-            lastAdded = p
         }
 
         mainRoadCells = cells
@@ -113,7 +113,12 @@ final class RoadNetwork {
     @discardableResult
     func planDistrict(projectId: String, origin: GridPoint) -> Int {
         districtOrigins[projectId] = origin
-        let loop = computeLoop(origin: origin)
+        let mag = nearestMainRoadPoint(to: origin)
+        let originV = (mag.map { origin.y - $0.y }) ?? 0
+        let side = originV >= 0 ? 1 : -1
+        districtLoopSides[projectId] = [side]
+
+        let loop = computeLoop(origin: origin, sideOverride: side)
 
         var seen = Set<GridPoint>()
         var plan: [GridPoint] = []
@@ -128,19 +133,30 @@ final class RoadNetwork {
         return plan.count
     }
 
-    /// Достраивает к плану ещё одну петлю — на противоположной стороне магистрали.
+    /// Достраивает к плану ещё одну петлю — на противоположной стороне магистрали
+    /// (или на следующей по перпендикулярной глубине, если обе стороны заняты).
     /// Используется, когда первая петля заполнена зданиями и нужно расширение.
     /// Возвращает количество добавленных клеток.
     @discardableResult
     func extendDistrictPlan(projectId: String) -> Int {
-        guard let origin = districtOrigins[projectId],
-              let mag    = nearestMainRoadPoint(to: origin),
+        guard let origin   = districtOrigins[projectId],
               let existing = districtPlans[projectId] else { return 0 }
 
-        // Зеркальное origin относительно магистрали → петля растёт на другой стороне.
-        let outDy = origin.y >= mag.y ? 1 : -1
-        let mirrored = GridPoint(x: origin.x, y: mag.y - outDy * max(2, abs(origin.y - mag.y)))
-        let extraLoop = computeLoop(origin: mirrored)
+        let usedSides = districtLoopSides[projectId] ?? []
+        // Следующая сторона: противоположная первой; если уже две — циклим.
+        let nextSide: Int
+        if usedSides.contains(1) && !usedSides.contains(-1) {
+            nextSide = -1
+        } else if usedSides.contains(-1) && !usedSides.contains(1) {
+            nextSide = 1
+        } else {
+            // Обе стороны уже использованы — повторяем последнюю (по сути это
+            // плейсхолдер; для глубокой экспансии нужно сдвигать u, см. TODO).
+            nextSide = usedSides.last ?? 1
+        }
+        districtLoopSides[projectId] = usedSides + [nextSide]
+
+        let extraLoop = computeLoop(origin: origin, sideOverride: nextSide)
 
         var seen = Set(existing)
         var added: [GridPoint] = []
@@ -152,6 +168,11 @@ final class RoadNetwork {
         }
         districtPlans[projectId] = existing + added
         return added.count
+    }
+
+    /// Сколько петель уже привязано к кварталу (1 после planDistrict, 2 после первого extend, …).
+    func loopCount(for projectId: String) -> Int {
+        districtLoopSides[projectId]?.count ?? 0
     }
 
     /// Помечает следующую клетку плана как построенную и возвращает её. nil — план исчерпан.
@@ -202,71 +223,60 @@ final class RoadNetwork {
         districtPlans.removeAll()
         districtPlanBuilt.removeAll()
         districtOrigins.removeAll()
+        districtLoopSides.removeAll()
     }
 
     // MARK: - Private
 
-    /// Генерирует U-петлю вокруг origin, прикреплённую к магистрали.
+    /// Генерирует петлю-прямоугольник, выровненный с горизонтальной магистралью (gy=midY).
     ///
-    /// Структура (для outDy=+1, mag ниже origin):
+    /// Координаты (u, v): u — вдоль магистрали (=gx), v — перпендикулярно (=gy-mag.y).
+    /// Обратное преобразование: gx = u, gy = mag.y + v.
+    ///
+    /// Петля (для outV=+1, side ABOVE mag в гриде, к LEFT-TOP по экрану):
     /// ```
-    ///   xMin            xMax
-    ///    +---  yFar  ---+         <- дальняя сторона (параллельна mag)
-    ///    |              |
-    ///    |   origin O   |         <- интерьер (зона зданий)
-    ///    |              |
-    ///    +---  yNear ---+         <- ближняя сторона (1 клетка от mag)
-    ///    .              .         <- connector_L / connector_R
-    ///   mag....mag....mag         <- магистраль
+    ///       (uMin,vFar)---далёкая---(uMax,vFar)
+    ///            |                       |
+    ///            |       origin O        |
+    ///            |                       |
+    ///       (uMin,vNear)--ближняя--(uMax,vNear)
+    ///                       ↓
+    ///                 магистраль (gy=mag.y)
     /// ```
-    /// Порядок обхода: connector_L → левая → дальняя → правая → connector_R.
-    /// Это даёт визуально плавную постройку от mag вокруг и обратно к mag.
-    private func computeLoop(origin: GridPoint) -> [GridPoint] {
+    /// Порядок обхода: левая перп → дальняя → правая перп → ближняя (зашивает обратно к mag).
+    private func computeLoop(origin: GridPoint, sideOverride outV: Int? = nil) -> [GridPoint] {
         guard let mag = nearestMainRoadPoint(to: origin) else { return [] }
 
+        // (u, v) координаты
         let halfW = Self.loopHalfWidth
         let depth = Self.loopDepth
-        let outDy = origin.y >= mag.y ? 1 : -1
-        let xMin  = origin.x - halfW
-        let xMax  = origin.x + halfW
-        let yNear = mag.y + outDy * 1
-        let yFar  = mag.y + outDy * depth
+        let magU  = mag.x
+        let originV = origin.y - mag.y
+        let outVdir: Int = outV ?? (originV >= 0 ? 1 : -1)
+
+        let uMin  = magU - halfW
+        let uMax  = magU + halfW
+        let vNear = outVdir * 1
+        let vFar  = outVdir * depth
 
         var ordered: [GridPoint] = []
         var seen = Set<GridPoint>()
         func add(_ p: GridPoint) {
             if seen.insert(p).inserted { ordered.append(p) }
         }
-        func perpRange() -> StrideThrough<Int> {
-            stride(from: yNear, through: yFar, by: outDy)
+        func cell(_ u: Int, _ v: Int) -> GridPoint {
+            GridPoint(x: u, y: mag.y + v)
         }
+        let vRange = stride(from: vNear, through: vFar, by: outVdir)
 
-        // 1. Левый connector: от nearCornerLeft вниз к mag (макс 12 клеток).
-        var p = GridPoint(x: xMin, y: yNear)
-        for _ in 0..<12 {
-            let down = GridPoint(x: p.x, y: p.y - outDy)
-            if allCells.contains(down) { break }
-            add(down)
-            p = down
-        }
-
-        // 2. Левая перпендикулярная сторона: yNear → yFar
-        for y in perpRange() { add(GridPoint(x: xMin, y: y)) }
-
-        // 3. Дальняя сторона (параллельна mag): xMin → xMax при y=yFar
-        for x in xMin...xMax { add(GridPoint(x: x, y: yFar)) }
-
-        // 4. Правая перпендикулярная сторона: yFar → yNear
-        for y in perpRange().reversed() { add(GridPoint(x: xMax, y: y)) }
-
-        // 5. Правый connector: от nearCornerRight вниз к mag
-        p = GridPoint(x: xMax, y: yNear)
-        for _ in 0..<12 {
-            let down = GridPoint(x: p.x, y: p.y - outDy)
-            if allCells.contains(down) { break }
-            add(down)
-            p = down
-        }
+        // 1. Левая перпендикулярная: u=uMin, v=vNear..vFar
+        for v in vRange { add(cell(uMin, v)) }
+        // 2. Дальняя параллельная: v=vFar, u=uMin..uMax
+        for u in uMin...uMax { add(cell(u, vFar)) }
+        // 3. Правая перпендикулярная (обратный обход): u=uMax, v=vFar..vNear
+        for v in vRange.reversed() { add(cell(uMax, v)) }
+        // 4. Ближняя параллельная (зашивает обратно к mag): v=vNear, u=uMax..uMin
+        for u in stride(from: uMax, through: uMin, by: -1) { add(cell(u, vNear)) }
 
         return ordered
     }

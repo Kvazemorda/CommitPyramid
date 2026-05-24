@@ -54,16 +54,17 @@ final class CitizenManager {
 
     private func targetCount(for project: ProjectState) -> Int {
         if project.unitIds.isEmpty || project.decayLevel == 4 { return 0 }
-        if project.stage < 2 { return 0 }
-        // F-21: жители появляются только если в квартале есть хотя бы один жилой юнит.
-        if let engine = engine {
-            let hasResidential = project.unitIds.contains { uid in
-                engine.state.units[uid.uuidString]?.kind.category == .residential
-            }
-            if !hasResidential { return 0 }
+        guard let engine = engine else { return 0 }
+        // Жители приходят как только в квартале появился хотя бы один residential.
+        // Сколько именно — пропорционально residential count (по 2 на каждый), с потолком 20
+        // и небольшим бонусом за stage.
+        let residentialCount = project.unitIds.reduce(0) { acc, uid in
+            (engine.state.units[uid.uuidString]?.kind.category == .residential) ? acc + 1 : acc
         }
-        let formula = min(20, project.stage * 2 + project.unitIds.count / 4)
-        return max(3, formula)
+        if residentialCount == 0 { return 0 }
+        let base = residentialCount * 2
+        let stageBonus = project.stage
+        return min(20, base + stageBonus)
     }
 
     // MARK: - Tick

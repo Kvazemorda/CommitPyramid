@@ -68,13 +68,12 @@ struct DistrictPlanner {
 
     // MARK: - Allocation along magistrale
 
-    /// Кладёт origin вдоль магистрали: чередует стороны (+/- offsetPerp перпендикулярно mag)
-    /// и движется с шагом stepAlongMag между кварталами. Это даёт компактные петли
-    /// (loopDepth=5 → origin на расстоянии ~3-4 клеток от mag, петля охватывает origin).
+    /// Кладёт origin В ЦЕНТРЕ карты, вдоль магистрали: первые 2 квартала по обе стороны от
+    /// центра mag, далее «слоями» по uSide=±1 (forward/backward вдоль mag), vSide=±1 (R/L от mag).
     ///
     /// - Parameters:
-    ///   - currentIndex: счётчик кварталов из CityState (state.nextDistrictIndex).
-    ///   - mainRoadCells: упорядоченные клетки магистрали из RoadNetwork.
+    ///   - currentIndex: счётчик кварталов из CityState.
+    ///   - mainRoadCells: упорядоченные клетки магистрали.
     ///   - biomeReader: для пропуска водных клеток.
     /// - Returns: (origin, newIndex). Если магистраль пуста — fallback к spiralPoint.
     func allocateAlongMagistrale(
@@ -86,30 +85,46 @@ struct DistrictPlanner {
             return allocateNextOrigin(currentIndex: currentIndex, biomeReader: biomeReader)
         }
 
-        let stepAlongMag = 10   // дистанция между парами кварталов вдоль магистрали
-        let offsetPerp   = 4    // origin отстоит от mag на 4 клетки (loopDepth=5 покрывает)
         let mag = mainRoadCells
+        let centerIdx    = mag.count / 2
+        let stepAlongMag = 8       // > 2*halfW для непересечения соседних петель
+        let offsetPerp   = 3       // origin отстоит на 3 клетки от mag по перпендикуляру (v=3 внутри loop)
 
-        let maxAttempts = currentIndex + 2_000
+        let maxAttempts = currentIndex + 1_000
         var idx = currentIndex
         while idx < maxAttempts {
-            let pairIdx  = idx / 2
-            let sideSign = (idx % 2 == 0) ? 1 : -1   // чередуем стороны mag
-            let magIdx   = stepAlongMag * (pairIdx + 1)
-            guard magIdx < mag.count else {
-                // Магистраль кончилась — fallback на спираль.
-                return (spiralPoint(index: idx), idx)
+            let layer: Int
+            let uSide: Int   // +1 forward вдоль mag (+gx), -1 backward (-gx)
+            let vSide: Int   // +1 ABOVE mag (+gy → к LEFT/TOP по экрану), -1 BELOW (-gy → к BOTTOM/RIGHT)
+            if idx == 0 {
+                layer = 0; uSide = 0; vSide = 1
+            } else if idx == 1 {
+                layer = 0; uSide = 0; vSide = -1
+            } else {
+                let i = idx - 2
+                layer = i / 4 + 1
+                let sub = i % 4
+                uSide = (sub / 2 == 0) ? 1 : -1
+                vSide = (sub % 2 == 0) ? 1 : -1
+            }
+            let magIdx = centerIdx + uSide * layer * stepAlongMag
+            guard magIdx >= 0, magIdx < mag.count else {
+                idx += 1
+                continue
             }
             let m = mag[magIdx]
-            let origin = GridPoint(x: m.x, y: m.y + sideSign * offsetPerp)
+            // Магистраль горизонтальна (gy=midY), перпендикуляр в гриде — ось ±gy.
+            let origin = GridPoint(
+                x: m.x,
+                y: m.y + vSide * offsetPerp
+            )
 
-            // Проверяем воду в самой origin и в окрестности петли.
             if let reader = biomeReader, reader.biome(atX: origin.x, y: origin.y).isWater {
                 idx += 1
                 continue
             }
             return (origin, idx)
         }
-        return (spiralPoint(index: currentIndex), idx)
+        return (mag[centerIdx], idx)
     }
 }

@@ -297,6 +297,16 @@ final class CityEngine: ObservableObject {
         let productionCount  = projectUnits.filter { $0.kind.category == .production }.count
         let socialCount      = projectUnits.filter { $0.kind.category == .social }.count
 
+        // Авто-расширение: если интерьер текущих петель уже заполнен зданиями —
+        // добавляем ещё одну петлю на противоположной стороне магистрали.
+        if let rn = roadNetwork, rn.isPlanComplete(for: projectKey) {
+            let buildingsSoFar = projectUnits.filter { $0.kind != .road }.count
+            let capacity = RoadNetwork.loopInteriorCapacity * max(1, rn.loopCount(for: projectKey))
+            if buildingsSoFar >= capacity {
+                rn.extendDistrictPlan(projectId: projectKey)
+            }
+        }
+
         // Дорога строится первой: пока в плане квартала есть непостроенные клетки —
         // текущая задача даёт следующую road-клетку. Когда план исчерпан — обычная логика.
         let kind: UnitKind
