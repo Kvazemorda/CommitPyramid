@@ -113,6 +113,8 @@ struct SettingsView: View {
                     onRepoRemoved: { [weak gitWatcher] id   in gitWatcher?.unregister(id: id) }
                 )
 
+                MapWorldSection(settings: settings)
+
                 TemplateFamilySection(settings: settings)
 
                 GroupBox("Reset & Rebuild") {
@@ -333,6 +335,66 @@ private struct TemplateFamilySection: View {
         case "roman":    return "Рим"
         case "greek":    return "Греция"
         default:         return family.capitalized
+        }
+    }
+}
+
+// TASK-030a F-15: секция инициализации карты мира (seed + reset button).
+private struct MapWorldSection: View {
+    @ObservedObject var settings: AppSettings
+    @State private var newSeedText: String = ""
+    @State private var showResetConfirm: Bool = false
+    @State private var isResetDisabled: Bool = false
+
+    var body: some View {
+        GroupBox(label: Label("Карта мира", systemImage: "map")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Текущий seed: \(settings.mapSeed)")
+                    .font(.system(.body, design: .monospaced))
+                HStack {
+                    TextField("Новый seed (пусто = случайный)", text: $newSeedText)
+                        .textFieldStyle(.roundedBorder)
+                    Button("Сбросить карту") {
+                        showResetConfirm = true
+                    }
+                    .tint(.red)
+                    .disabled(isResetDisabled || !isValidSeedInput)
+                }
+                Text("Карта пересоберётся, кварталы переразместятся. Лог событий сохранится.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+        .alert("Сбросить карту мира?", isPresented: $showResetConfirm) {
+            Button("Сбросить", role: .destructive) {
+                applyReset()
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Карта будет пересоздана с seed \(displaySeed). Кварталы переразместятся. Лог задач не меняется. Продолжить?")
+        }
+    }
+
+    private var displaySeed: String {
+        let parsed = MapSeedValidator.parse(newSeedText)
+        if parsed == nil && !newSeedText.isEmpty { return "?" }
+        return parsed.map(String.init) ?? "случайным"
+    }
+
+    private var isValidSeedInput: Bool {
+        newSeedText.isEmpty || MapSeedValidator.parse(newSeedText) != nil
+    }
+
+    private func applyReset() {
+        let newSeed = MapSeedValidator.parse(newSeedText) ?? 0
+        settings.mapSeed = newSeed
+        settings.save()
+        ErrorsLog.write("[map-reinit] requested: seed=\(newSeed)")
+        newSeedText = ""
+        isResetDisabled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            isResetDisabled = false
         }
     }
 }

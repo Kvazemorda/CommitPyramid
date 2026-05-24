@@ -40,6 +40,8 @@ final class AppSettings: ObservableObject {
     // F-25: District templates
     @Published var templateFamily: String = "auto"
     @Published var previewTemplateSilhouette: Bool = false
+    /// TASK-030a F-15: seed карты мира. 0 = «случайный при первом старте/reinit».
+    @Published var mapSeed: UInt64 = 0
 
     private static let key = "com.commitpyramid.app.settings"
     private static let legacyKey = "com.outbyte.citydeveloper.settings"
@@ -55,7 +57,8 @@ final class AppSettings: ObservableObject {
         commitWeightMultiplier: Double = 0.1,
         taskWeightMultiplier: Double = 1.0,
         templateFamily: String = "auto",
-        previewTemplateSilhouette: Bool = false
+        previewTemplateSilhouette: Bool = false,
+        mapSeed: UInt64 = 0
     ) {
         self.tasksJsonlPath = tasksJsonlPath
         self.dataDirectory = dataDirectory
@@ -69,6 +72,7 @@ final class AppSettings: ObservableObject {
         self.taskWeightMultiplier   = min(max(taskWeightMultiplier,   0.5),  5.0)
         self.templateFamily = templateFamily
         self.previewTemplateSilhouette = previewTemplateSilhouette
+        self.mapSeed = mapSeed
     }
 
     static func load() -> AppSettings {
@@ -84,6 +88,7 @@ final class AppSettings: ObservableObject {
             // Migrate: for v1 files catchUpIntervalMinutes is nil → default 5.
             // v2+ files: notesSources is optional → default [] for backward-compat.
             // v3+ files: commitWeightMultiplier / taskWeightMultiplier optional → defaults.
+            // v4→v5: mapSeed optional → default 0.
             // We never reject version >= 1 to avoid resetting existing settings.
             let interval = max(3, min(60, decoded.catchUpIntervalMinutes ?? 5))
             return AppSettings(
@@ -97,7 +102,8 @@ final class AppSettings: ObservableObject {
                 commitWeightMultiplier: decoded.commitWeightMultiplier ?? 0.1,
                 taskWeightMultiplier: decoded.taskWeightMultiplier ?? 1.0,
                 templateFamily: decoded.templateFamily ?? "auto",
-                previewTemplateSilhouette: decoded.previewTemplateSilhouette ?? false
+                previewTemplateSilhouette: decoded.previewTemplateSilhouette ?? false,
+                mapSeed: decoded.mapSeed ?? 0
             )
         }
         return AppSettings(
@@ -111,7 +117,7 @@ final class AppSettings: ObservableObject {
     func save() {
         let clampedInterval = min(max(catchUpIntervalMinutes, 3), 60)
         let p = Persisted(
-            version: 4,
+            version: 5,
             tasksJsonlPath: tasksJsonlPath,
             dataDirectory: dataDirectory,
             hotkeyKeyCode: hotkeyKeyCode,
@@ -122,7 +128,8 @@ final class AppSettings: ObservableObject {
             commitWeightMultiplier: commitWeightMultiplier,
             taskWeightMultiplier: taskWeightMultiplier,
             templateFamily: templateFamily,
-            previewTemplateSilhouette: previewTemplateSilhouette
+            previewTemplateSilhouette: previewTemplateSilhouette,
+            mapSeed: mapSeed
         )
         if let data = try? JSONEncoder().encode(p) {
             UserDefaults.standard.set(data, forKey: AppSettings.key)
@@ -146,5 +153,6 @@ final class AppSettings: ObservableObject {
         let taskWeightMultiplier: Double?
         let templateFamily: String?              // optional для v1..v3 backward-compat
         let previewTemplateSilhouette: Bool?     // optional для v1..v3 backward-compat
+        let mapSeed: UInt64?                     // optional для v1..v4 backward-compat (added in TASK-030a / v5)
     }
 }
