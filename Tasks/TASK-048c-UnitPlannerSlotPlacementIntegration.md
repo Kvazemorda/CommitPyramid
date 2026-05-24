@@ -788,4 +788,4 @@ _Объём: M_
 - Verify: pass (5/5 + 4/4 новых, 9/9 регресс TASK-038, 4/4 регресс CityEngineTests, full suite 109/110 с 1 known-fail BUG-020)
 - Code-review: approved (opus, 2 soft-issues — syncRoadNetworkPlans guard + AppDelegate wire — переносятся в follow-up)
 - Завершена: 2026-05-24
-- Коммит: —
+- Коммит: 72ffcbd
