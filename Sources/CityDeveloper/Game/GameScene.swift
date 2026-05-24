@@ -950,7 +950,10 @@ final class GameScene: SKScene {
             createdAt: Date(), lastActivityAt: Date(),
             taskCount: count, stage: 3, decayLevel: 0,
             lastDecayLogged: 0, districtOrigin: GridPoint(x: 0, y: 0),
-            unitIds: []
+            unitIds: [],
+            templateName: nil,        // bench: visual-only, шаблон не используется
+            templateFamily: nil,
+            eraLevel: 0
         )
         for _ in 0..<count {
             let x = rng.nextInt(in: -60...60)

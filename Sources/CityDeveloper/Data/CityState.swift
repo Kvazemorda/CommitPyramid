@@ -448,6 +448,64 @@ struct ProjectState: Codable {
     var lastDecayLogged: Int        // для предотвращения повторной записи decayTick
     var districtOrigin: GridPoint   // центр квартала
     var unitIds: [UUID]
+    // F-25: District templates + epochs (TASK-048a)
+    var templateName: String?
+    var templateFamily: String?
+    var eraLevel: Int
+
+    init(
+        id: String,
+        name: String,
+        createdAt: Date,
+        lastActivityAt: Date,
+        taskCount: Int,
+        stage: Int,
+        decayLevel: Int,
+        lastDecayLogged: Int,
+        districtOrigin: GridPoint,
+        unitIds: [UUID],
+        templateName: String? = nil,
+        templateFamily: String? = nil,
+        eraLevel: Int = 0
+    ) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+        self.lastActivityAt = lastActivityAt
+        self.taskCount = taskCount
+        self.stage = stage
+        self.decayLevel = decayLevel
+        self.lastDecayLogged = lastDecayLogged
+        self.districtOrigin = districtOrigin
+        self.unitIds = unitIds
+        self.templateName = templateName
+        self.templateFamily = templateFamily
+        self.eraLevel = eraLevel
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        lastActivityAt = try c.decode(Date.self, forKey: .lastActivityAt)
+        taskCount = try c.decode(Int.self, forKey: .taskCount)
+        stage = try c.decode(Int.self, forKey: .stage)
+        decayLevel = try c.decode(Int.self, forKey: .decayLevel)
+        lastDecayLogged = try c.decode(Int.self, forKey: .lastDecayLogged)
+        districtOrigin = try c.decode(GridPoint.self, forKey: .districtOrigin)
+        unitIds = try c.decode([UUID].self, forKey: .unitIds)
+        // F-25 fields — optional decode for backwards-compat (legacy JSON без них)
+        templateName = try c.decodeIfPresent(String.self, forKey: .templateName)
+        templateFamily = try c.decodeIfPresent(String.self, forKey: .templateFamily)
+        eraLevel = try c.decodeIfPresent(Int.self, forKey: .eraLevel) ?? 0
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, createdAt, lastActivityAt, taskCount, stage
+        case decayLevel, lastDecayLogged, districtOrigin, unitIds
+        case templateName, templateFamily, eraLevel
+    }
 }
 
 struct CityState: Codable {

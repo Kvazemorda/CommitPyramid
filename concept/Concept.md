@@ -729,3 +729,138 @@ N» на правила вида «юнит X эволюционирует в Y 
 0.1). После reset с этим значением каждый git commit (даже большой) даёт ровно
 1 юнит. При увеличении до 1.0 поведение возвращается к до-фикса (1-5 юнитов по
 diff). Слайдер для tasks/notes отдельный.
+
+---
+
+### F-25: Шаблоны кварталов (District templates) и эволюция через эпохи
+
+**Что:** Заменить нынешнее «реактивное» размещение юнитов (depth=1 от road,
+`extendDistrictPlan` на лету) на **slot-based** размещение через готовые
+**шаблоны кварталов** (district templates). Каждый шаблон — это grid
+тайлов с обозначенными ролями слотов (residential / well / road / market / ...).
+Шаблоны привязаны к stage квартала и к **исторической семье** (egyptian,
+roman, greek). При переходе квартала на следующий stage шаблон **меняется**
+(или дополняется), существующие юниты остаются в своих позициях и эволюционируют
+визуально через F-23. После stage 5 + N задач + age ≥ X дней квартал переходит
+в **monumental era** — финальный «улучшенный» шаблон с уникальными зданиями
+(пирамида, цитадель, дворец), которые недоступны раньше. Это даёт пользователю
+город, который **годами не просто растёт, а улучшается визуально**.
+
+**Состав:**
+
+1. **`DistrictTemplate` (модель данных).** Codable-структура:
+   ```
+   { name, family, stage, width, height, biomePreference: [BiomeKind],
+     slots: [TemplateSlot] }
+   TemplateSlot { x, y, role: SlotRole, footprint: GridSize }
+   SlotRole = residential | well | road | market | temple | workshop | farm
+            | bath | school | obelisk | gate | warehouse | monumental
+   ```
+   Хранятся в `Resources/DistrictTemplates/<family>/<stage>-<name>.json`.
+   На старте загружаются в `DistrictTemplateCatalog` (in-memory).
+
+2. **Минимум 15 шаблонов в первой итерации:**
+   - **Egyptian family** (5 шаблонов, stage 1–5):
+     - Stage 1: Deir el-Medina cell (1 проход, хижины + колодец) — посёлок строителей гробниц, ~1500 BC.
+     - Stage 2: Kahun worker town (регулярная сетка + ферма) — рабочий городок при пирамиде Сенусерта II, ~1900 BC.
+     - Stage 3: Ahmarna middle district (главная улица + жилые блоки + храм) — на основе Tell el-Amarna.
+     - Stage 4: Pharaonic services district (market + bath + temple в центре, residential кольцом) — компиляция Caesar III/Pharaoh-game паттернов.
+     - Stage 5: Akhetaten ceremonial quarter (священная ось, дворец + пирамида + храмы) — столица Эхнатона, ~1350 BC.
+   - **Roman family** (5 шаблонов, stage 1–5):
+     - Stage 1: villa rustica (один дом + хозблок) — древнеримская сельская усадьба.
+     - Stage 2: vicus (придорожный посёлок с тавернами).
+     - Stage 3: castrum mini (крест cardo+decumanus, форум на пересечении) — Тимгад, Аоста.
+     - Stage 4: Pompeii regio (insula-блоки 4×4, инсулы 2×2, форум) — Помпеи Regio VII.
+     - Stage 5: Roman colonia (форум + храмы + театр + термы) — Лептис Магна, Гераса.
+   - **Greek family** (5 шаблонов, stage 1–5):
+     - Stage 1: kome (рыбацкий посёлок).
+     - Stage 2: Hippodamian grid mini (V в. до н.э., Гипподам Милетский).
+     - Stage 3: agora district (агора в центре, stoa по сторонам) — Милет.
+     - Stage 4: classical polis (акрополь + агора + жилые кварталы) — Приена.
+     - Stage 5: monumental Hellenistic (огромный храм + театр + одеон) — Эфес, Пергам.
+
+3. **`DistrictTemplatePicker`** — выбор шаблона при создании квартала:
+   - Filter: `template.stage == project.stage`.
+   - Filter: `template.family == settings.templateFamily` (или `auto` → выбор
+     по биому: meadow/desert → egyptian, stone/mountain → roman, sea/river →
+     greek; mixed → детерминированный hash от projectId).
+   - Filter: `project.biome ∈ template.biomePreference` (если задано).
+   - Deterministic pick через `SplitMix64(seed: fnv1a([projectId, stage]))` из
+     отфильтрованного списка.
+
+4. **Slot-based `UnitPlanner.nextPosition`.** Новый алгоритм:
+   - Получить шаблон квартала.
+   - Получить kind следующего юнита от `nextUnitKind` (без изменений).
+   - Найти первый свободный slot в шаблоне с подходящей ролью (residential →
+     residential-слот; well → well-слот; etc) → вернуть его координаты + footprint.
+   - Если ролевых слотов того же типа нет (все заняты) — fallback на
+     legacy `nextPosition` (depth=1 от road) с предупреждением в errors.log
+     (это сигнал «шаблон надо переделать»).
+
+5. **Template migration на stage-up.** Когда `project.stage` инкрементируется:
+   - Текущий шаблон сохраняется как `prevTemplate`.
+   - Picker выбирает новый `nextTemplate` для stage+1 (та же family).
+   - Маппинг: каждый существующий юнит остаётся в своей `GridPoint` (новый
+     шаблон должен включать или поглощать area предыдущего — это инвариант
+     дизайна шаблонов, для каждой пары `(stage N, stage N+1)` в той же family
+     bbox stage N ⊆ bbox stage N+1, и роли совпадают/совместимы).
+   - Новые слоты, появившиеся в `nextTemplate`, становятся доступны для
+     `nextPosition` следующих task_completed.
+   - Если миграция невозможна (нет совместимого шаблона) — fallback на
+     текущее поведение (квартал не меняет форму), warning в errors.log.
+
+6. **Monumental era (долгоиграющая эволюция).** Помимо stage 1→5, есть
+   `EraLevel` 0..3:
+   - era 0 — обычные шаблоны stage 1–5.
+   - era 1 — после stage 5 + ≥100 закрытых задач в проекте + ≥30 дней age:
+     `_monumental` суффикс шаблона (например, `akhetaten-monumental.json`)
+     с уникальными зданиями (палаццо 4×4, обелиск-комплекс).
+   - era 2 — ≥500 задач + ≥180 дней: появляется уникальный landmark проекта
+     (пирамида / цитадель / акрополь — по family).
+   - era 3 — ≥2000 задач + ≥365 дней: smelting district / library /
+     observatory — «древний город культуры», `_legacy` шаблон.
+   - era-up — отдельный `GameEvent.Kind.eraAdvanced(projectId, era)` в
+     events.jsonl, replay-safe.
+
+7. **Settings UI.** В `SettingsView` новая секция «Стиль города»:
+   - Picker `templateFamily`: `auto | egyptian | roman | greek | mixed`.
+     Tooltip: «Стиль зданий и кварталов. Auto — по биому. Mixed — рандом
+     на каждый проект».
+   - Toggle `previewTemplate`: показывать silhouette шаблона при создании
+     нового квартала (debug-режим).
+   - При смене `templateFamily` существующие кварталы **не перерисовываются**
+     (это бы ломало replay). Применяется к новым проектам после смены.
+
+8. **Persistence.** `ProjectState` расширяется:
+   - `templateName: String` — имя выбранного шаблона.
+   - `templateFamily: String` — фиксированная семья (snapshot момента создания).
+   - `eraLevel: Int` — текущая эпоха 0..3.
+   Все три поля сериализуются в `state.json` и `unit_built` events, replay
+   восстанавливает выбор шаблона детерминированно.
+
+**Why:** Сейчас (Stage 4 рендер) квартал — это «куча юнитов вокруг
+случайных road-петель». Нет читаемого силуэта города: 30+ кварталов
+выглядят как один большой ковёр. У реальных античных городов есть
+**узнаваемая планировка** (римский castrum, греческий грид, египетский
+ось «храм-дворец»), которая делает город визуально приятным даже на
+старте. Шаблоны:
+- дают **читаемый силуэт** (можно с зума ×0.3 узнать «римский квартал»);
+- решают «здания не прижаты вплотную» (явные courtyards/gardens между блоками);
+- решают «случайно разбросаны» (роль каждого тайла предопределена);
+- открывают **долгоиграющую игру**: пользователь, который ведёт проект 5
+  лет, видит как его квартал из посёлка превращается в роскошный
+  monumental district с уникальными постройками — это конкретная награда
+  за многолетнюю работу;
+- дают пользователю **контроль через Settings** — выбор любимого стиля
+  без программирования.
+
+**Done-критерий:** В Resources лежит ≥15 JSON-шаблонов (5 stage × 3 family).
+При создании нового проекта в Settings выбран «Egyptian» — квартал
+выглядит как Deir el-Medina (компактный посёлок с одной улицей и
+колодцем по центру). При stage-up до 2 квартал визуально превращается в
+Kahun-сетку, существующие хижины остаются на своих местах + появляются
+новые слоты для дальнейших юнитов. При stage 5 + 100 закрытых задач +
+30 дней age на карте появляется уникальное здание (пирамида для
+egyptian-family), которое не появлялось раньше. Replay 5000 событий
+воспроизводит выбор шаблонов и era-up детерминированно. Переключение
+templateFamily в Settings влияет только на следующие новые проекты.

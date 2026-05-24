@@ -1,8 +1,98 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-24 (прогон BUG-011..016 + F-23/F-24)_
+_Актуально на: 2026-05-24 (прогон TASK-038 + TASK-047 + F-25 заведена + BUG-019/020/021)_
 
-## ⏱ Что сделано за прогон 2026-05-24 (orchestrated by Opus, executed by Sonnet)
+## ⏱ Что сделано за прогон 2026-05-24 (часть 3: F-25 первая волна — TASK-047/048a/048b)
+
+**Закрыто (продолжение):**
+- TASK-048a (D-25 часть 2.1/5) — `ProjectState` расширен полями
+  `templateName/templateFamily/eraLevel` с явным `init(from:)` для
+  backwards-compat. `AppSettings` v3→v4: `templateFamily`/`previewTemplateSilhouette`
+  с миграцией. CityEngine + GameScene-bench обновлены явными nil/0/nil. 6 новых
+  тестов PASS. Lead: opus → revised → applied; Run: sonnet, без отклонений.
+- TASK-048b (D-25 часть 2.2/5) — `UnitKind.preferredSlotRole` (extension, 51 case
+  exhaustive switch) + `DistrictTemplatePicker` (auto/mixed/explicit family
+  resolution, biome-filter с fallback, детерминированный pick через
+  SplitMix64). 11 новых тестов PASS. Lead: opus, plan-review skipped (план
+  максимально готов); Run: sonnet, без отклонений.
+
+**Прогресс F-25:** 3 из 5 sub-task'ов (TASK-047, 048a, 048b). Осталось:
+TASK-048c (slot-placement integration), TASK-049 (stage-up migration),
+TASK-050 (era progression), TASK-051 (Settings UI).
+
+**Результат `swift test`:** 101/101 total — 1 known-fail (BUG-020) = 100 PASS.
+
+**Изменения файлов за прогон 048a+048b:**
+- `Sources/CityDeveloper/Data/CityState.swift` (ProjectState +3 поля + init(from:))
+- `Sources/CityDeveloper/Data/AppSettings.swift` (5 micro-правок, v3→v4)
+- `Sources/CityDeveloper/Game/CityEngine.swift:277-288` (3 явных параметра)
+- `Sources/CityDeveloper/Game/GameScene.swift:948` (3 явных параметра)
+- `Sources/CityDeveloper/Game/Templates/UnitKindSlotRole.swift` (НОВЫЙ)
+- `Sources/CityDeveloper/Game/Templates/DistrictTemplatePicker.swift` (НОВЫЙ)
+- `Tests/CityDeveloperTests/ProjectStateTemplateFieldsTests.swift` (НОВЫЙ, 3)
+- `Tests/CityDeveloperTests/AppSettingsV4MigrationTests.swift` (НОВЫЙ, 3)
+- `Tests/CityDeveloperTests/UnitKindSlotRoleTests.swift` (НОВЫЙ, 4)
+- `Tests/CityDeveloperTests/DistrictTemplatePickerTests.swift` (НОВЫЙ, 7)
+
+---
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 3: F-25 первая волна — TASK-047)
+
+**Закрыто:**
+- TASK-047 (D-25 часть 1/5) — фундамент F-25:
+  - `DistrictTemplate` модель (Codable + Sendable, 3 типа в 36 строках).
+  - `DistrictTemplateCatalog` singleton-loader (120 строк, ioQueue thread-safe,
+    internal validate для тестов, динамическая регистрация family из JSON).
+  - 5 JSON-шаблонов egyptian-семьи (15→25→35→45→51 слотов, инвариант
+    bbox+slot-preservation между stage'ями).
+  - 7 unit-тестов `DistrictTemplateCatalogTests` (включая
+    `testStageProgressionPreservesSlots` для защиты инварианта TASK-049
+    migration).
+  - Документация `concept/TemplateCatalog.md` (201 строка, формат + инварианты).
+  - Lead-model: opus (revision круг 1 → 6 правок → круг 2 approved).
+  - Run-model: sonnet (middle сложность, делегирован).
+  - **Side-effect (улучшение):** Sonnet обошёл ограничение SwiftPM
+    `.process("Resources")` (сглаживание подпапок) через filter по JSON-полю
+    `family`. Catalog теперь динамически подхватывает любую family из
+    положенного JSON без правок кода — TASK-051 Settings Picker станет
+    проще.
+
+**Результат `swift test`:** 84/84 — 1 known-fail (BUG-020) = 83 PASS.
+
+**Следующее в очереди:** TASK-048 (DistrictTemplatePicker + slot-based UnitPlanner).
+
+---
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 2: F-25 setup + TASK-038)
+
+**Заведено:**
+- F-25 «District templates + эпохи» в Concept.md (8 пунктов состава: модель,
+  3 family с 5 stage каждая, picker, slot-based placement, migration на stage-up,
+  era progression 0-3, Settings UI). D-25 в Diff.md (L, не закрыт).
+- 5 TASK-файлов первой волны F-25: TASK-047 (модель + egyptian-family),
+  TASK-048 (Picker + slot-placement), TASK-049 (stage-up migration),
+  TASK-050 (era progression), TASK-051 (Settings UI). Все waiting-for-lead.
+- 4 follow-up идеи в Backlog: Roman/Greek families, era-варианты,
+  snapshot-тесты шаблонов.
+
+**Закрыто:**
+- TASK-038 (UnitPlanner tests) — `Tests/CityDeveloperTests/UnitPlannerTests.swift`
+  с 9 тестами (категориальные пропорции / minStage / biome-affinity / детерминизм /
+  performance / 4 edge cases). Все PASS. Lead-model: opus, plan-review: revised→approved
+  (круг 1 → 5 правок → круг 2 approved). Run: opus self-executed.
+
+**Открыто (новые баги):**
+- BUG-019 (P1) — z-sort, дальние юниты/дороги перекрывают ближние (визуальный).
+- BUG-020 (P1) — `BiomeClassifierTests.testRiversHaveReasonableWidth` падает
+  на seed=42 (рек нет). Известный fail, не регресс.
+- BUG-021 (P2) — large-юниты составляют ~37% на stage 5 + meadow (56/150),
+  PM-spec ожидал ≤2%. Тест TASK-038 ослаблен до baseline=60 до фикса.
+
+**Результат `swift test`:** 76/77 PASS, 1 known-fail (BUG-020).
+
+---
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 1: BUG-011..016 + F-23/F-24)
 
 Закрыты 6 багов и добавлены 2 фичи:
 
@@ -60,7 +150,7 @@ _Актуально на: 2026-05-24 (прогон BUG-011..016 + F-23/F-24)_
 | F-13 | Каталог арт-ассетов                           | ✅     | `Game/IsoBuilder.swift`, `Game/UnitSprites.swift`, `Game/CitizenSprites.swift`, `Game/RoadConnector.swift` | 12 типов + жители + руины + штабели + road-варианты. Particle-эффекты — F-05/F-09. |
 | F-14 | Настройки (UI)                                | ✅     | `Data/AppSettings.swift`, `UI/SettingsView.swift`, `App/SettingsWindowController.swift` | Путь tasks.jsonl + dataDir + hotkey, применяются без рестарта, persistence UserDefaults |
 | F-15 | Биомы и генерация карты                       | ⚠️     | `World/NoiseMap.swift`, `World/NoiseFieldGenerator.swift`, `World/WorldMapProvider.swift`, `World/WorldMapStore.swift`, `World/WorldSeedStore.swift`, `World/BiomeKind.swift`, `World/BiomeClassifier.swift`, `Game/BiomeMapReader.swift`, `Game/TileTextureFactory.swift`, `Game/BiomeRenderer.swift`, `Game/GameScene.swift` | Шумовые поля 256×256 (TASK-026 ✅). BiomeClassifier: квантильные пороги, flood-fill sea, downhill rivers (TASK-027 ✅). Рендер биомов на SKTileMapNode + 64 переходных тайла + overlay-градиенты (TASK-028 ✅). Зум до ×0.15 + clamp по границам карты (TASK-029 ✅). **Остаток:** реинициализация карты (TASK-030 — escalate-too-large, разбить в next cycle). |
-| F-16 | Расширенный каталог юнитов (50 шт.)           | ⚠️     | `Data/CityState.swift`, `Data/SnapshotStore.swift`, `Data/GameEvent.swift`, `Game/UnitSprites.swift`, `Game/UnitPlanner.swift`, `Game/CityEngine.swift`, `Game/GameScene.swift`, `Game/DeterministicRNG.swift`, `Game/TerrainAffinity.swift`, `concept/UnitCatalog.md` | Каталог расширен до 51 UnitKind (TASK-031 ✅). Placeholder-спрайты для всех 50 через декларативную таблицу `PlaceholderSpec` + PNG-first fallback (TASK-032 ✅). Эволюционные цепочки с GameEvent.Kind.unitEvolved + repeat-каскад в applyTaskCompleted + replay-safe (TASK-034 ✅). Terrain affinity — pure `TerrainAffinity.weight(for:in:)` (TASK-033 ✅). UnitPlanner biome-aware: 5-шаговый алгоритм (pattern→category→minStage→evolution-roots-cut→weighted sample, SplitMix64+FNV-1a seed) (TASK-035 ✅). Stage-tier визуальный API `makeKindStageBuilding(kind:stage:)` (TASK-036 ✅). Legacy state 12→50 миграция backwards-compat (TASK-037 ✅). Документация — concept/UnitCatalog.md (TASK-039 ✅). **Остаток:** UnitPlanner tests (TASK-038 — blocked-spec до этой волны, теперь разблокирован для next cycle); финальные Pharaoh-spritеs (TASK-040 — escalate-too-large, push в Backlog). |
+| F-16 | Расширенный каталог юнитов (50 шт.)           | ⚠️     | `Data/CityState.swift`, `Data/SnapshotStore.swift`, `Data/GameEvent.swift`, `Game/UnitSprites.swift`, `Game/UnitPlanner.swift`, `Game/CityEngine.swift`, `Game/GameScene.swift`, `Game/DeterministicRNG.swift`, `Game/TerrainAffinity.swift`, `Tests/CityDeveloperTests/UnitPlannerTests.swift`, `concept/UnitCatalog.md` | Каталог расширен до 51 UnitKind (TASK-031 ✅). Placeholder-спрайты для всех 50 через декларативную таблицу `PlaceholderSpec` + PNG-first fallback (TASK-032 ✅). Эволюционные цепочки с GameEvent.Kind.unitEvolved + repeat-каскад в applyTaskCompleted + replay-safe (TASK-034 ✅). Terrain affinity — pure `TerrainAffinity.weight(for:in:)` (TASK-033 ✅). UnitPlanner biome-aware: 5-шаговый алгоритм (pattern→category→minStage→evolution-roots-cut→weighted sample, SplitMix64+FNV-1a seed) (TASK-035 ✅). Stage-tier визуальный API `makeKindStageBuilding(kind:stage:)` (TASK-036 ✅). Legacy state 12→50 миграция backwards-compat (TASK-037 ✅). **Тесты UnitPlanner — 9 кейсов** (TASK-038 ✅, 2026-05-24). Документация — concept/UnitCatalog.md (TASK-039 ✅). **Остаток:** финальные Pharaoh-spritеs (TASK-040 — blocked-by F-21, push в Backlog как content task). |
 | F-17 | In-app journal (ручной ввод)                  | ✅     | `UI/SidePanelView.swift`, `UI/TaskInputPopupView.swift`, `UI/SceneBridge.swift`, `Game/GameScene.swift`, `UI/ContentView.swift` | Блок ввода задачи в верхней части SidePanelView (TextField + Picker с «Создать новый…» + Cmd+Return); контекстный popup по клику пустой части квартала (diamond hit-test, decay-4 guard); запись через `engine.ingestTaskCompletion(source: "journal")`; валидация (whitespace guard + warning border 1.5 сек, 255 символов); idempotent replay через events.jsonl. TASK-021 ✅ |
 | F-18 | Notes/folder watcher (обобщение F-04)         | ✅     | `Data/NotesWatcher/NotesSourceSpec.swift`, `NotesPatternParser.swift`, `NotesStateStore.swift`, `NotesFileReader.swift`, `NotesWatcher.swift`, `UI/Settings/NotesWatcherSection.swift`, `UI/Settings/NotesPatternsPopover.swift` | NotesWatcher реализует EventSource; 4 регекс-паттерна (Bullet/Heading/Checkbox/Frontmatter) скомпилированы как static let; sidecar в Application Support/CityDeveloper/notes-state/<sourceId>.json; DispatchSource live + 5-мин poll fallback (через CatchUpScheduler из TASK-020); `engine.ingestTaskCompletionIfUnique` для events.jsonl-level dedup. TASK-022 ✅ |
 | F-19 | Git watcher (авто-учёт коммитов)              | ✅     | `Data/GitWatcher/GitCLI.swift`, `Data/GitWatcher/GitRepoSpec.swift`, `Data/GitWatcher/GitWatcher.swift`, `Data/GitWatcher/ConventionalCommit.swift`, `UI/Settings/GitWatcherSection.swift` | GitWatcher реализует EventSource; GitCLI — Process-обёртка без shell-injection; GitRepoSpec — Codable модель; ConventionalCommit — парсер feat/fix/refactor/docs/chore; Settings UI секция «Git watcher» с NSOpenPanel, TextField projectId, BranchPicker, 3 Toggle (gitFetch, weightByDiff, categoryByType), кнопка trash. Persistence через AppSettings.gitRepos (UserDefaults). TASK-023 ✅ |

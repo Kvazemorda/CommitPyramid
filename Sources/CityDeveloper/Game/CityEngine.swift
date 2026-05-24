@@ -284,7 +284,10 @@ final class CityEngine: ObservableObject {
                 decayLevel: 0,
                 lastDecayLogged: 0,
                 districtOrigin: origin,
-                unitIds: []
+                unitIds: [],
+                templateName: nil,        // TASK-048c assign через Picker
+                templateFamily: nil,      // TASK-048c assign
+                eraLevel: 0               // TASK-050 будет менять
             )
 
             // Запланировать дорогу квартала (branch + ring). Реальная постройка —

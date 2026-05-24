@@ -1,0 +1,25 @@
+{
+  "name": "stage1-deir-el-medina",
+  "family": "egyptian",
+  "stage": 1,
+  "width": 8,
+  "height": 5,
+  "biomePreference": ["meadow", "desert"],
+  "slots": [
+    { "x": 1, "y": 1, "role": "residential", "footprint": { "width": 1, "height": 1 } },
+    { "x": 2, "y": 1, "role": "residential", "footprint": { "width": 1, "height": 1 } },
+    { "x": 4, "y": 1, "role": "residential", "footprint": { "width": 1, "height": 1 } },
+    { "x": 5, "y": 1, "role": "residential", "footprint": { "width": 1, "height": 1 } },
+    { "x": 1, "y": 2, "role": "road", "footprint": { "width": 1, "height": 1 } },
+    { "x": 2, "y": 2, "role": "road", "footprint": { "width": 1, "height": 1 } },
+    { "x": 3, "y": 2, "role": "road", "footprint": { "width": 1, "height": 1 } },
+    { "x": 4, "y": 2, "role": "road", "footprint": { "width": 1, "height": 1 } },
+    { "x": 5, "y": 2, "role": "road", "footprint": { "width": 1, "height": 1 } },
+    { "x": 6, "y": 2, "role": "road", "footprint": { "width": 1, "height": 1 } },
+    { "x": 1, "y": 3, "role": "residential", "footprint": { "width": 1, "height": 1 } },
+    { "x": 2, "y": 3, "role": "well", "footprint": { "width": 1, "height": 1 } },
+    { "x": 3, "y": 3, "role": "residential", "footprint": { "width": 1, "height": 1 } },
+    { "x": 5, "y": 3, "role": "residential", "footprint": { "width": 1, "height": 1 } },
+    { "x": 6, "y": 3, "role": "residential", "footprint": { "width": 1, "height": 1 } }
+  ]
+}

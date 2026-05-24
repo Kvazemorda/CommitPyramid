@@ -37,6 +37,9 @@ final class AppSettings: ObservableObject {
             if clamped != taskWeightMultiplier { taskWeightMultiplier = clamped }
         }
     }
+    // F-25: District templates
+    @Published var templateFamily: String = "auto"
+    @Published var previewTemplateSilhouette: Bool = false
 
     private static let key = "com.commitpyramid.app.settings"
     private static let legacyKey = "com.outbyte.citydeveloper.settings"
@@ -50,7 +53,9 @@ final class AppSettings: ObservableObject {
         notesSources: [NotesSourceSpec] = [],
         gitRepos: [GitRepoSpec] = [],
         commitWeightMultiplier: Double = 0.1,
-        taskWeightMultiplier: Double = 1.0
+        taskWeightMultiplier: Double = 1.0,
+        templateFamily: String = "auto",
+        previewTemplateSilhouette: Bool = false
     ) {
         self.tasksJsonlPath = tasksJsonlPath
         self.dataDirectory = dataDirectory
@@ -62,6 +67,8 @@ final class AppSettings: ObservableObject {
         self.catchUpIntervalMinutes = min(max(catchUpIntervalMinutes, 3), 60)
         self.commitWeightMultiplier = min(max(commitWeightMultiplier, 0.05), 2.0)
         self.taskWeightMultiplier   = min(max(taskWeightMultiplier,   0.5),  5.0)
+        self.templateFamily = templateFamily
+        self.previewTemplateSilhouette = previewTemplateSilhouette
     }
 
     static func load() -> AppSettings {
@@ -88,7 +95,9 @@ final class AppSettings: ObservableObject {
                 notesSources: decoded.notesSources ?? [],
                 gitRepos: decoded.gitRepos ?? [],
                 commitWeightMultiplier: decoded.commitWeightMultiplier ?? 0.1,
-                taskWeightMultiplier: decoded.taskWeightMultiplier ?? 1.0
+                taskWeightMultiplier: decoded.taskWeightMultiplier ?? 1.0,
+                templateFamily: decoded.templateFamily ?? "auto",
+                previewTemplateSilhouette: decoded.previewTemplateSilhouette ?? false
             )
         }
         return AppSettings(
@@ -102,7 +111,7 @@ final class AppSettings: ObservableObject {
     func save() {
         let clampedInterval = min(max(catchUpIntervalMinutes, 3), 60)
         let p = Persisted(
-            version: 3,
+            version: 4,
             tasksJsonlPath: tasksJsonlPath,
             dataDirectory: dataDirectory,
             hotkeyKeyCode: hotkeyKeyCode,
@@ -111,7 +120,9 @@ final class AppSettings: ObservableObject {
             notesSources: notesSources.isEmpty ? nil : notesSources,
             gitRepos: gitRepos.isEmpty ? nil : gitRepos,
             commitWeightMultiplier: commitWeightMultiplier,
-            taskWeightMultiplier: taskWeightMultiplier
+            taskWeightMultiplier: taskWeightMultiplier,
+            templateFamily: templateFamily,
+            previewTemplateSilhouette: previewTemplateSilhouette
         )
         if let data = try? JSONEncoder().encode(p) {
             UserDefaults.standard.set(data, forKey: AppSettings.key)
@@ -133,5 +144,7 @@ final class AppSettings: ObservableObject {
         // Optional for backward-compat: absent field → defaults (added in F-24 / v3).
         let commitWeightMultiplier: Double?
         let taskWeightMultiplier: Double?
+        let templateFamily: String?              // optional для v1..v3 backward-compat
+        let previewTemplateSilhouette: Bool?     // optional для v1..v3 backward-compat
     }
 }
