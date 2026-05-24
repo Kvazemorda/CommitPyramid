@@ -1,6 +1,70 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-24 (прогон TASK-048c — F-25 4/5, BUG-010 закрыт в templated mode)_
+_Актуально на: 2026-05-24 (прогон TASK-049 — F-25 5/7, stage-up template migration)_
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 5: F-25 миграция — TASK-049)
+
+**Закрыто:**
+- TASK-049 (D-25 часть 3/5) — template migration при stage-up:
+  - `GameEvent.Kind.templateMigrated = "template_migrated"` + helper
+    `templateMigrationPayload(from:)` для парсинга title `"fromName|toName"`.
+  - `CityEngine.apply()` switch: `.templateMigrated: break` (state уже в applyTaskCompleted).
+  - `CityEngine.applyTemplateMigration(projectKey:newStage:silent:)` private —
+    pre-checks (templateName != nil, decayLevel < 4, templateFamily != nil),
+    Picker(stage:newStage, family:project.templateFamily, seed: fnv1a([projectKey, "stage-\(newStage)"])),
+    validate через `TemplateMigrationValidator.canMigrate(...)`, update
+    project.templateName/Family или skip + ErrorsLog warning.
+  - Step-wise migration loop: `for targetStage in (oldStage+1)...newStage` —
+    каждый промежуточный stage отдельным `.templateMigrated` event'ом.
+  - `CityEngine._testInjectUnit(_:into:)` — internal seam для тестов
+    incompatible scenario.
+  - `CityEngine.onTemplateMigrated` callback, wired в AppDelegate.
+  - `GameScene.handleTemplateMigrated(projectId:fromTemplate:toTemplate:)` —
+    диффит road-слоты между current/next templates, вызывает `drawRoadCells`
+    для extension. Cross-fade новых тайлов земли — follow-up (земля — часть
+    SKTileMapNode, не меняется при миграции).
+  - `TemplateMigrationValidator.canMigrate(units:to:districtOrigin:)` —
+    pure helper в `Game/Templates/`, проверяет что все template-placed units
+    находятся на slot'ах nextTemplate с совместимой role.
+  - **Архитектурное уточнение:** validator фильтрует `templateUnits` (только
+    юниты на slot-позициях currentTemplate). Legacy units вне template
+    не блокируют миграцию формы. Для F-25 MVP с egyptian preservation
+    invariant это безопасно (все units placed через slot-placement).
+  - 4 unit-теста `TemplateMigrationValidatorTests` (pure helper) + 4
+    integration-теста `CityEngineTemplateMigrationTests` (stage-up migrates,
+    preserves positions, skipped when incompatible через `_testInjectUnit`,
+    replayable).
+  - Side-effect: `JournalKindFilter` exhaustive switch — добавлены case'ы
+    для `.templateMigrated` (icon `square.grid.3x3.fill`, name «Миграция шаблона»).
+  - Lead-model: opus (3 круга plan-review до approved — step-wise migration
+    + AC4 GameScene visual + private(set) test seam). Run: sonnet executor +
+    sonnet verify + opus code-review (approved с 3 non-blocking notes).
+
+**Прогресс F-25:** 5 из 7 sub-task'ов (TASK-047, 048a, 048b, 048c, 049).
+Осталось: TASK-050 (era progression), TASK-051 (Settings UI).
+
+**Результат `swift test`:** 117/118 — 1 known-fail (BUG-020) = 117 PASS.
+
+**Изменения файлов за TASK-049:**
+- `Sources/CityDeveloper/Data/GameEvent.swift` (+1 case + payload helper)
+- `Sources/CityDeveloper/UI/JournalKindFilter.swift` (+1 case в exhaustive switch)
+- `Sources/CityDeveloper/Game/CityEngine.swift` (callback, step-wise loop, applyTemplateMigration, _testInjectUnit seam)
+- `Sources/CityDeveloper/App/AppDelegate.swift` (+3 строки wiring)
+- `Sources/CityDeveloper/Game/GameScene.swift` (handleTemplateMigrated с road-extension)
+- `Sources/CityDeveloper/Game/Templates/TemplateMigrationValidator.swift` (НОВЫЙ, pure helper)
+- `Tests/CityDeveloperTests/TemplateMigrationValidatorTests.swift` (НОВЫЙ, 4 теста)
+- `Tests/CityDeveloperTests/CityEngineTemplateMigrationTests.swift` (НОВЫЙ, 4 теста)
+
+**Follow-up для следующего цикла (накапливается из TASK-048c + TASK-049):**
+- `syncRoadNetworkPlans()` — добавить guard `if project.templateName == nil`.
+- AppDelegate: wire `engine.templateFamily = appSettings.templateFamily`
+  (часть TASK-051 Settings UI).
+- Cross-family migration: validator strict role equality (нет совместимости
+  warehouse↔market и т.п.) — для F-25 MVP не нужно, но в будущем при
+  расширении family pool потребует уточнения.
+- Cross-fade новых тайлов земли при миграции (визуальная feedback) — follow-up.
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-24 (часть 4: F-25 интеграция — TASK-048c)
 

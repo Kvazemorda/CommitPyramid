@@ -33,21 +33,23 @@ extension GameEvent.Kind {
         case .fire:          return "flame"
         case .restore:       return "arrow.uturn.up"
         case .ruinsCleared:  return "trash.slash"
-        case .unitEvolved:   return "arrow.triangle.2.circlepath"  // TASK-034
+        case .unitEvolved:        return "arrow.triangle.2.circlepath"  // TASK-034
+        case .templateMigrated:   return "square.grid.3x3.fill"         // TASK-049
         }
     }
 
     /// Человекочитаемое название для popover «Кастом» и пресетов.
     var displayName: String {
         switch self {
-        case .taskCompleted: return "Закрытие задачи"
-        case .unitBuilt:     return "Постройка юнита"
-        case .stageUp:       return "Апгрейд стадии"
-        case .decayTick:     return "Decay-тик"
-        case .fire:          return "Пожар"
-        case .restore:       return "Восстановление"
-        case .ruinsCleared:  return "Снос руин"
-        case .unitEvolved:   return "Эволюция юнита"  // TASK-034
+        case .taskCompleted:    return "Закрытие задачи"
+        case .unitBuilt:        return "Постройка юнита"
+        case .stageUp:          return "Апгрейд стадии"
+        case .decayTick:        return "Decay-тик"
+        case .fire:             return "Пожар"
+        case .restore:          return "Восстановление"
+        case .ruinsCleared:     return "Снос руин"
+        case .unitEvolved:      return "Эволюция юнита"   // TASK-034
+        case .templateMigrated: return "Миграция шаблона" // TASK-049
         }
     }
 }

@@ -70,6 +70,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onProjectStageChanged = { [weak self] projectId, oldStage, newStage in
             self?.scene?.handleProjectStageChanged(projectId: projectId, oldStage: oldStage, newStage: newStage)
         }
+        // TASK-049 F-25: road-extension при миграции template на stage-up.
+        // Callback срабатывает только при live-тике (silent=false в CityEngine).
+        engine.onTemplateMigrated = { [weak self] projectId, from, to in
+            self?.scene?.handleTemplateMigrated(projectId: projectId, fromTemplate: from, toTemplate: to)
+        }
         // TASK-034 F-16: визуальная эволюция юнита по порогу.
         // Callback срабатывает только при live-тике (silent=false в CityEngine).
         engine.onUnitEvolved = { [weak self] uid, from, to, projectId in

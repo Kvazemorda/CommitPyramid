@@ -164,10 +164,11 @@ _Это технический контракт между внешним кро
 | `fire`          | переход decay 2→3 (визуализация горения)                 | nil                       |
 | `ruins_cleared` | (зарезервирован; пока не пишется отдельно)               | nil                       |
 | `unit_evolved`  | визуальная эволюция юнита по порогу F-16                 | `<uid>\|<from>\|<to>`     |
+| `template_migrated` | F-25 stage-up template migration (`!silent`)         | `<fromName>\|<toName>`    |
 
 ### Порядок для одной задачи (нормативный)
 
-`task_completed` → (`restore` опц.) → `unit_built` → (`unit_evolved` × N опц.) → (`stage_up` опц.)
+`task_completed` → (`restore` опц.) → `unit_built` → (`unit_evolved` × N опц.) → (`stage_up` опц.) → (`template_migrated` × N опц., по одному на промежуточный stage)
 
 Все четыре события пишутся в рамках одного вызова `applyTaskCompleted` (live-тик).
 В `silent: true`-ветке (replay из лога / snapshot tail) **новых записей не делается**:

@@ -13,6 +13,9 @@ struct GameEvent: Codable, Identifiable {
         /// TASK-034: визуальная эволюция юнита по порогу F-16.
         /// title = "<unitId.uuidString>|<from.rawValue>|<to.rawValue>"
         case unitEvolved   = "unit_evolved"
+        /// TASK-049 F-25: миграция шаблона квартала при stage-up.
+        /// title = "<fromTemplateName>|<toTemplateName>"
+        case templateMigrated = "template_migrated"
     }
 
     let id: UUID
@@ -56,6 +59,15 @@ extension GameEvent {
               let toKind   = UnitKind(rawValue: String(parts[2]))
         else { return nil }
         return (uid, fromKind, toKind)
+    }
+
+    /// TASK-049: Парсит title события `.templateMigrated` формата "<fromName>|<toName>".
+    /// Возвращает nil если title отсутствует или формат не распознан.
+    static func templateMigrationPayload(from title: String?) -> (from: String, to: String)? {
+        guard let title else { return nil }
+        let parts = title.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return nil }
+        return (String(parts[0]), String(parts[1]))
     }
 }
 

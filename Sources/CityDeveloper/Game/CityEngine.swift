@@ -31,6 +31,10 @@ final class CityEngine: ObservableObject {
     /// extendDistrictPlan (реактивно при заполнении петли). GameScene
     /// рисует эти клетки сразу — иначе они в allCells, но визуально пусто.
     var onRoadCellsAdded: (([GridPoint]) -> Void)?
+    /// TASK-049 F-25: callback при миграции template на stage-up.
+    /// (projectId, fromTemplateName, toTemplateName). Вызывается только в live.
+    /// AppDelegate wires в GameScene.handleTemplateMigrated.
+    var onTemplateMigrated: ((String, String, String) -> Void)?
 
     /// TASK-035 F-16: биом-карта для передачи в UnitPlanner.
     /// Задаётся из GameScene после построения BiomeMap (опционально; nil → uniform weights).
@@ -194,7 +198,7 @@ final class CityEngine: ObservableObject {
             project.lastDecayLogged = 0
             state.projects[event.project] = project
             if !silent { onDecayChanged?(event.project) }
-        case .unitBuilt, .stageUp, .ruinsCleared:
+        case .unitBuilt, .stageUp, .ruinsCleared, .templateMigrated:
             break
         case .unitEvolved:
             // TASK-034: меняем kind юнита в state (и при silent replay, и при live).
@@ -454,9 +458,22 @@ final class CityEngine: ObservableObject {
 
         // TASK-019: обновляем unit.tier для всех юнитов проекта при stage-up (атомарно).
         // Включая только что добавленный юнит (project.unitIds уже содержит unit.id).
+        // TASK-049 F-25: пошаговая миграция template для каждого промежуточного stage'а
+        // (1→2→3 даёт два .templateMigrated event'а). Идемпотентна для replay через
+        // silent (state-изменение всегда, событие — только в live ниже).
+        var migrations: [(from: String, to: String)] = []
         if newStage > oldStage {
             for uid in project.unitIds {
                 state.units[uid.uuidString]?.tier = newStage
+            }
+            for targetStage in (oldStage + 1)...newStage {
+                if let m = applyTemplateMigration(
+                    projectKey: projectKey,
+                    newStage: targetStage,
+                    silent: silent
+                ) {
+                    migrations.append(m)
+                }
             }
         }
 
@@ -475,6 +492,12 @@ final class CityEngine: ObservableObject {
             } while applyEvolutionsIfReady(projectKey: projectKey)
             if newStage > oldStage {
                 appendSystemEvent(.stageUp, project: projectKey, title: "S\(oldStage) → S\(newStage)")
+                // TASK-049 F-25: emit один .templateMigrated event на каждый промежуточный stage.
+                for m in migrations {
+                    appendSystemEvent(.templateMigrated, project: projectKey,
+                                      title: "\(m.from)|\(m.to)")
+                    onTemplateMigrated?(projectKey, m.from, m.to)
+                }
             }
             if isNewProject {
                 if let oldId = ruinsClearedFrom {
@@ -629,6 +652,80 @@ final class CityEngine: ObservableObject {
             return nil
         }
         return (kind, resolved)
+    }
+
+    // MARK: - TASK-049 F-25: Template Migration
+
+    /// Миграция template при stage-up. Идемпотентна (silent=true safe).
+    /// Изменяет project.templateName в state. В live (silent=false) emit'ит событие
+    /// и вызывает callback.
+    /// Возвращает (fromName, toName)? — нужно для appendSystemEvent в live-блоке.
+    @discardableResult
+    private func applyTemplateMigration(
+        projectKey: String,
+        newStage: Int,
+        silent: Bool
+    ) -> (from: String, to: String)? {
+        guard var project = state.projects[projectKey] else { return nil }
+
+        // Pre-checks
+        guard let currentName = project.templateName else { return nil }      // legacy proj
+        guard project.decayLevel < 4 else { return nil }                       // ruin
+        guard let currentFamily = project.templateFamily else { return nil }   // safety
+
+        // Pick next template (deterministic via fnv1a([projectKey, "stage-\(newStage)"])).
+        let pickSeed = fnv1a(combining: [projectKey, "stage-\(newStage)"])
+        let pickBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
+        guard let nextTemplate = DistrictTemplatePicker.pick(
+            stage: newStage,
+            family: currentFamily,
+            biome: pickBiome,
+            seed: pickSeed
+        ) else {
+            // No template for stage+1 (например stage 5 без stage 6) — silent skip
+            return nil
+        }
+        // Same template (Picker иногда возвращает тот же, если family flat) — skip
+        if nextTemplate.name == currentName { return nil }
+
+        // Validate compatibility.
+        // Фильтруем только units, размещённых через template-систему (позиция в текущем шаблоне).
+        // Legacy units (placed via fallback, вне template bounds) пропускаются — они уже
+        // существуют вне template-системы и не должны блокировать миграцию формы.
+        let allProjectUnits = state.units.values.filter { $0.projectId == projectKey }
+        guard let currentTemplate = DistrictTemplateCatalog.byName(currentName) else {
+            // Текущий template не найден — не можем проверить → skip migration.
+            return nil
+        }
+        let currentSlotPositions: Set<GridPoint> = Set(currentTemplate.slots.map {
+            GridPoint(x: project.districtOrigin.x + $0.x, y: project.districtOrigin.y + $0.y)
+        })
+        // Template-placed units: те, чья позиция = один из slot'ов текущего template.
+        let templateUnits = allProjectUnits.filter { currentSlotPositions.contains($0.position) }
+        guard TemplateMigrationValidator.canMigrate(
+            units: Array(templateUnits),
+            to: nextTemplate,
+            districtOrigin: project.districtOrigin
+        ) else {
+            ErrorsLog.write("[template-migration] district \(projectKey): cannot migrate from \(currentName) to \(nextTemplate.name) — unit positions incompatible, keeping \(currentName)")
+            return nil
+        }
+
+        // Apply state change (live + replay).
+        project.templateName = nextTemplate.name
+        project.templateFamily = nextTemplate.family  // обычно тот же, но safe
+        state.projects[projectKey] = project
+
+        return (currentName, nextTemplate.name)
+    }
+
+    /// TASK-049 test seam — позволяет интеграционным тестам инжектить
+    /// unit на произвольную позицию (например, для проверки behavior'а
+    /// applyTemplateMigration при incompatible state). НЕ использовать
+    /// в production-коде — обходит event-sourcing.
+    internal func _testInjectUnit(_ unit: UnitState, into projectKey: String) {
+        state.units[unit.id.uuidString] = unit
+        state.projects[projectKey]?.unitIds.append(unit.id)
     }
 
     /// Детерминированный выбор руины для нового проекта (F-06).

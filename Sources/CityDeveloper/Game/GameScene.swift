@@ -406,6 +406,35 @@ final class GameScene: SKScene {
         }
     }
 
+    /// TASK-049 F-25: при миграции template — дорисовать новые road-слоты
+    /// (slot.role == .road, которые есть в nextTemplate, но не было в currentTemplate).
+    /// Пустые тайлы земли других role'ов рендерятся естественно при заполнении
+    /// последующими task_completed (через slot-placement в UnitPlanner).
+    func handleTemplateMigrated(projectId: String, fromTemplate: String, toTemplate: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.didAttach,
+                  let engine = self.engine,
+                  let project = engine.state.projects[projectId],
+                  let current = DistrictTemplateCatalog.byName(fromTemplate),
+                  let next = DistrictTemplateCatalog.byName(toTemplate) else { return }
+            let origin = project.districtOrigin
+            // Абсолютные координаты road-слотов в каждом template.
+            let currentRoadCells: Set<GridPoint> = Set(current.slots
+                .filter { $0.role == .road }
+                .map { GridPoint(x: origin.x + $0.x, y: origin.y + $0.y) })
+            let nextRoadCells: Set<GridPoint> = Set(next.slots
+                .filter { $0.role == .road }
+                .map { GridPoint(x: origin.x + $0.x, y: origin.y + $0.y) })
+            // Diff: новые road-слоты, которых не было раньше.
+            let added = Array(nextRoadCells.subtracting(currentRoadCells))
+            if !added.isEmpty {
+                // drawAddedRoadCells — публичный wrapper уже делает async + didAttach guard;
+                // здесь вызываем напрямую т.к. уже на main queue внутри async.
+                self.drawRoadCells(added)
+            }
+        }
+    }
+
     /// Заменяет building-child в ноде юнита на категориальный tier-спрайт для newStage.
     /// Cross-fade ≤0.5 сек, параллельно для всех нод квартала.
     private func swapStageSprite(in node: SKNode, newStage: Int) {
