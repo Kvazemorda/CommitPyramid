@@ -75,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onTemplateMigrated = { [weak self] projectId, from, to in
             self?.scene?.handleTemplateMigrated(projectId: projectId, fromTemplate: from, toTemplate: to)
         }
+        // TASK-050 F-25: золотая вспышка при era-up квартала.
+        // Callback срабатывает только при live-тике (silent=false в CityEngine).
+        engine.onEraAdvanced = { [weak scene] projectId, era in
+            scene?.handleEraAdvanced(projectId: projectId, era: era)
+        }
         // TASK-034 F-16: визуальная эволюция юнита по порогу.
         // Callback срабатывает только при live-тике (silent=false в CityEngine).
         engine.onUnitEvolved = { [weak self] uid, from, to, projectId in

@@ -32,7 +32,8 @@ final class UnitPlannerSlotPlacementTests: XCTestCase {
             builtCells: [],
             unitSize: GridSize(width: 1, height: 1),
             template: template,
-            kind: .road
+            kind: .road,
+            projectEraLevel: 0
         )
         XCTAssertEqual(pos, GridPoint(x: 1, y: 2))  // first road slot sorted (y, x)
     }
@@ -47,7 +48,8 @@ final class UnitPlannerSlotPlacementTests: XCTestCase {
             builtCells: [GridPoint(x: 1, y: 2)],
             unitSize: GridSize(width: 1, height: 1),
             template: template,
-            kind: .road
+            kind: .road,
+            projectEraLevel: 0
         )
         XCTAssertEqual(pos, GridPoint(x: 2, y: 2))
     }
@@ -67,7 +69,8 @@ final class UnitPlannerSlotPlacementTests: XCTestCase {
             builtCells: occupied,
             unitSize: GridSize(width: 1, height: 1),
             template: template,
-            kind: .road
+            kind: .road,
+            projectEraLevel: 0
         )
         XCTAssertNil(pos)
     }
@@ -82,7 +85,8 @@ final class UnitPlannerSlotPlacementTests: XCTestCase {
             builtCells: [],
             unitSize: GridSize(width: 1, height: 1),
             template: template,
-            kind: .road
+            kind: .road,
+            projectEraLevel: 0
         )
         XCTAssertEqual(pos, GridPoint(x: 101, y: 52))
     }
@@ -98,7 +102,8 @@ final class UnitPlannerSlotPlacementTests: XCTestCase {
             builtCells: [],
             unitSize: GridSize(width: 1, height: 1),
             template: nil,
-            kind: nil
+            kind: nil,
+            projectEraLevel: 0
         )
         // Legacy: should return a position at depth=1 from road.
         // Must be adjacent (manhattan dist 1) to road cell (5,5) and NOT overlap road.

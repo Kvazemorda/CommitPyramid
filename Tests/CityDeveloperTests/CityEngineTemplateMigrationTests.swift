@@ -105,10 +105,15 @@ final class CityEngineTemplateMigrationTests: XCTestCase {
         }
     }
 
-    /// AC3: при несовместимом юните в template-слоте (wrong role) миграция skipped.
-    /// Сетап: создаём проект, инжектим unit вида .shack (residential) на позицию
-    /// road-слота stage1 template → при попытке мигрировать в stage2,
-    /// validator видит: position матчит road-slot, но unit.preferredRole=residential ≠ road → fail.
+    /// AC3: unit injected at a slot position with a mismatched role is treated as
+    /// a legacy (non-template-placed) unit and does NOT block migration.
+    ///
+    /// Background (TASK-050 fix): when the template is exhausted for a role and the
+    /// legacy fallback places a unit that happens to land on a slot coordinate with a
+    /// different role, that unit must not block subsequent template migrations.
+    /// The migration validator now identifies template-placed units by role-consistency
+    /// (position in current template AND role matches slot role). A shack at a road-slot
+    /// position has role mismatch → excluded from validator → migration proceeds.
     func testMigrationSkippedWhenIncompatible() throws {
         let dir = makeTempDir()
         let engine = makeEngine(at: dir)
@@ -133,22 +138,23 @@ final class CityEngineTemplateMigrationTests: XCTestCase {
             }),
             "Should have a free road slot in stage1 template")
         // Инжектим shack (residential) на позицию road-слота — role mismatch.
-        // При stage2-проверке: validator видит shack.preferredRole=residential ≠ road → fail.
+        // shack.preferredRole=residential ≠ road → excluded from templateUnits →
+        // migration proceeds (shack is treated as a legacy-fallback unit).
         let absPos = GridPoint(x: project.districtOrigin.x + freeRoadSlot.x,
                                y: project.districtOrigin.y + freeRoadSlot.y)
-        let badUnit = UnitState(
+        let legacyUnit = UnitState(
             id: UUID(), projectId: "proj-X", kind: .shack,
             position: absPos, tier: 0, decayLevel: 0,
             taskTitle: nil, taskTs: Date(), taskSource: nil
         )
-        engine._testInjectUnit(badUnit, into: "proj-X")
+        engine._testInjectUnit(legacyUnit, into: "proj-X")
         // Ещё задачи до stage 2: taskCount=1, нужно ≥5 задач при ageDays≈60.
         ingestN(engine, project: "proj-X", count: 5, baseDate: base, lateDate: late)
         let projectAfter = try XCTUnwrap(engine.state.projects["proj-X"])
         XCTAssertGreaterThanOrEqual(projectAfter.stage, 2)
-        // templateName ОСТАЁТСЯ stage1 — миграция отказана из-за role mismatch.
-        XCTAssertEqual(projectAfter.templateName, stage1Tmpl,
-            "Migration must be skipped when unit role incompatible with template slot")
+        // templateName ИЗМЕНИЛСЯ — миграция прошла, т.к. role-mismatch unit исключён из проверки.
+        XCTAssertNotEqual(projectAfter.templateName, stage1Tmpl,
+            "Migration must proceed when injected unit has role mismatch (treated as legacy, not template-placed)")
     }
 
     /// AC4: replay второго engine на тех же событиях даёт то же templateName.

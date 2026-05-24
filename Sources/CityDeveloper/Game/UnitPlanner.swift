@@ -286,13 +286,14 @@ struct UnitPlanner {
         builtCells: Set<GridPoint>,
         unitSize: GridSize = GridSize(width: 1, height: 1),
         template: DistrictTemplate? = nil,
-        kind: UnitKind? = nil
+        kind: UnitKind? = nil,
+        projectEraLevel: Int
     ) -> GridPoint? {
         // TASK-048c F-25: slot-based placement for templated districts.
         if let t = template, let k = kind {
             let targetRole = k.preferredSlotRole
             let sorted = t.slots
-                .filter { $0.role == targetRole }
+                .filter { $0.role == targetRole && $0.minEra <= projectEraLevel }
                 .sorted { ($0.y, $0.x) < ($1.y, $1.x) }
             for slot in sorted {
                 // Check occupancy: intersection of slot footprint with builtCells.

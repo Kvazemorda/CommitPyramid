@@ -435,6 +435,51 @@ final class GameScene: SKScene {
         }
     }
 
+    // MARK: - TASK-050 F-25: Era-up visual
+
+    /// TASK-050 F-25: золотая вспышка по контуру квартала на era-up.
+    /// Длительность 2 сек: fadeIn 0.3 → wait 1.4 → fadeOut 0.3.
+    /// Контур = iso-ромб квартала width×height (4 угла), цвет UI gold.
+    func handleEraAdvanced(projectId: String, era: Int) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.didAttach,
+                  let engine = self.engine,
+                  let project = engine.state.projects[projectId] else { return }
+            let template = project.templateName
+                .flatMap { DistrictTemplateCatalog.byName($0) }
+            let w = template?.width ?? 16
+            let h = template?.height ?? 16
+            let origin = project.districtOrigin
+            // 4 угла квартала в grid-координатах:
+            let corners = [
+                GridPoint(x: origin.x,           y: origin.y),
+                GridPoint(x: origin.x + w - 1,   y: origin.y),
+                GridPoint(x: origin.x + w - 1,   y: origin.y + h - 1),
+                GridPoint(x: origin.x,           y: origin.y + h - 1),
+            ]
+            let scenePoints = corners.map { self.isoPosition(grid: $0) }
+            let path = CGMutablePath()
+            path.move(to: scenePoints[0])
+            for i in 1..<scenePoints.count {
+                path.addLine(to: scenePoints[i])
+            }
+            path.closeSubpath()
+            let outline = SKShapeNode(path: path)
+            outline.strokeColor = SKColor(red: 1.0, green: 0.84, blue: 0.0, alpha: 1.0)
+            outline.lineWidth = 3
+            outline.fillColor = .clear
+            outline.alpha = 0
+            outline.zPosition = 9998
+            self.world.addChild(outline)
+            outline.run(.sequence([
+                .fadeIn(withDuration: 0.3),
+                .wait(forDuration: 1.4),
+                .fadeOut(withDuration: 0.3),
+                .removeFromParent()
+            ]))
+        }
+    }
+
     /// Заменяет building-child в ноде юнита на категориальный tier-спрайт для newStage.
     /// Cross-fade ≤0.5 сек, параллельно для всех нод квартала.
     private func swapStageSprite(in node: SKNode, newStage: Int) {

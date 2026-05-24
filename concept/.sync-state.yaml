@@ -1,8 +1,8 @@
 core_collapse_threshold: 3
 last_sync_date: "2026-05-24"
-last_sync_commit: "d0cdd68"
+last_sync_commit: "5c8150d"
 last_report_date: "2026-05-24"
-last_report_ref: "d0cdd68"
+last_report_ref: "5c8150d"
 feature_stability:
   F-01: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
   F-02: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
@@ -28,4 +28,4 @@ feature_stability:
   F-22: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
   F-23: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
   F-24: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-25: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }  # 1/5: TASK-047 done
+  F-25: { status: "⚠️", consecutive_ok: 0, collapse_skipped: false }  # 6/7: TASK-047/048a/048b/048c/049/050 done; осталась TASK-051 (Settings UI)

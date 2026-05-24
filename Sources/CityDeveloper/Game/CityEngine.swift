@@ -35,6 +35,9 @@ final class CityEngine: ObservableObject {
     /// (projectId, fromTemplateName, toTemplateName). Вызывается только в live.
     /// AppDelegate wires в GameScene.handleTemplateMigrated.
     var onTemplateMigrated: ((String, String, String) -> Void)?
+    /// TASK-050 F-25: era-up callback.
+    /// Параметры: projectId, era (1..3).
+    var onEraAdvanced: ((String, Int) -> Void)?
 
     /// TASK-035 F-16: биом-карта для передачи в UnitPlanner.
     /// Задаётся из GameScene после построения BiomeMap (опционально; nil → uniform weights).
@@ -198,7 +201,7 @@ final class CityEngine: ObservableObject {
             project.lastDecayLogged = 0
             state.projects[event.project] = project
             if !silent { onDecayChanged?(event.project) }
-        case .unitBuilt, .stageUp, .ruinsCleared, .templateMigrated:
+        case .unitBuilt, .stageUp, .ruinsCleared, .templateMigrated, .eraAdvanced:
             break
         case .unitEvolved:
             // TASK-034: меняем kind юнита в state (и при silent replay, и при live).
@@ -390,7 +393,8 @@ final class CityEngine: ObservableObject {
                 builtCells: builtSet,
                 unitSize: resolvedKind.size,
                 template: template,
-                kind: resolvedKind
+                kind: resolvedKind,
+                projectEraLevel: project.eraLevel
             ) {
                 kind = resolvedKind
                 placedPos = slotPos
@@ -477,6 +481,14 @@ final class CityEngine: ObservableObject {
             }
         }
 
+        // TASK-050 F-25: era progression.
+        // Запускается всегда (silent + live) для state-консистентности.
+        let eraResults = applyEraProgression(
+            projectKey: projectKey,
+            eventTs: event.ts,
+            silent: silent
+        )
+
         if !silent {
             // Порядок в events.jsonl: task_completed → (restore?) → unit_built → (unit_evolved × N опц.) → (stage_up?).
             appendSystemEvent(.unitBuilt, project: projectKey, title: unit.kind.label)
@@ -494,6 +506,16 @@ final class CityEngine: ObservableObject {
                 appendSystemEvent(.stageUp, project: projectKey, title: "S\(oldStage) → S\(newStage)")
                 // TASK-049 F-25: emit один .templateMigrated event на каждый промежуточный stage.
                 for m in migrations {
+                    appendSystemEvent(.templateMigrated, project: projectKey,
+                                      title: "\(m.from)|\(m.to)")
+                    onTemplateMigrated?(projectKey, m.from, m.to)
+                }
+            }
+            // TASK-050: emit eraAdvanced + опциональный templateMigrated.
+            for r in eraResults {
+                appendSystemEvent(.eraAdvanced, project: projectKey, title: String(r.era))
+                onEraAdvanced?(projectKey, r.era)
+                if let m = r.migration {
                     appendSystemEvent(.templateMigrated, project: projectKey,
                                       title: "\(m.from)|\(m.to)")
                     onTemplateMigrated?(projectKey, m.from, m.to)
@@ -638,7 +660,8 @@ final class CityEngine: ObservableObject {
                 buildingIndex: buildingIndex,
                 roadCells: roadNetwork?.allCells ?? [],
                 builtCells: builtSet,
-                unitSize: kind.size
+                unitSize: kind.size,
+                projectEraLevel: project.eraLevel
             )
             if foundPos == nil {
                 extends += 1
@@ -685,7 +708,9 @@ final class CityEngine: ObservableObject {
             // No template for stage+1 (например stage 5 без stage 6) — silent skip
             return nil
         }
-        // Same template (Picker иногда возвращает тот же, если family flat) — skip
+        // Same template (Picker иногда возвращает тот же, если family flat) — skip.
+        // Note: era-suffix templates (monumental/legacy) are excluded by DistrictTemplatePicker,
+        // so no additional guard needed here.
         if nextTemplate.name == currentName { return nil }
 
         // Validate compatibility.
@@ -697,11 +722,19 @@ final class CityEngine: ObservableObject {
             // Текущий template не найден — не можем проверить → skip migration.
             return nil
         }
-        let currentSlotPositions: Set<GridPoint> = Set(currentTemplate.slots.map {
-            GridPoint(x: project.districtOrigin.x + $0.x, y: project.districtOrigin.y + $0.y)
-        })
-        // Template-placed units: те, чья позиция = один из slot'ов текущего template.
-        let templateUnits = allProjectUnits.filter { currentSlotPositions.contains($0.position) }
+        // Template-placed units: units whose position matches a slot in the current template
+        // AND whose role matches (role-consistent). Units placed via legacy fallback that happen
+        // to land on slot coordinates but with a mismatched role are excluded — they exist outside
+        // the template system and must not block migration.
+        var currentSlotRoles: [GridPoint: SlotRole] = [:]
+        for slot in currentTemplate.slots {
+            let abs = GridPoint(x: project.districtOrigin.x + slot.x, y: project.districtOrigin.y + slot.y)
+            currentSlotRoles[abs] = slot.role
+        }
+        let templateUnits = allProjectUnits.filter { unit in
+            guard let slotRole = currentSlotRoles[unit.position] else { return false }
+            return slotRole == unit.kind.preferredSlotRole
+        }
         guard TemplateMigrationValidator.canMigrate(
             units: Array(templateUnits),
             to: nextTemplate,
@@ -717,6 +750,112 @@ final class CityEngine: ObservableObject {
         state.projects[projectKey] = project
 
         return (currentName, nextTemplate.name)
+    }
+
+    // MARK: - TASK-050 F-25: Era Progression
+
+    /// Имя era-шаблона по правилу TASK-050:
+    ///   era 1 → "<stage5-base>-monumental"
+    ///   era 3 → "<stage5-base>-legacy"
+    ///   era 2 → nil (без подмены — только активация minEra:2 слотов)
+    /// stage5-base = currentName с отрезанным "-monumental"/"-legacy" суффиксом.
+    private func eraTemplateName(currentName: String, era: Int) -> String? {
+        let base = stripEraSuffix(currentName)
+        switch era {
+        case 1: return "\(base)-monumental"
+        case 3: return "\(base)-legacy"
+        default: return nil
+        }
+    }
+
+    private func stripEraSuffix(_ name: String) -> String {
+        for suf in ["-monumental", "-legacy", "-ceremonial"] {
+            if name.hasSuffix(suf) {
+                return String(name.dropLast(suf.count))
+            }
+        }
+        return name
+    }
+
+    /// TASK-050 F-25: era progression после stage-up.
+    /// Возвращает массив (era, migration?) для каждого совершённого
+    /// шага — нужен в live-блоке для emit eraAdvanced / templateMigrated.
+    /// Идемпотентен (silent=true safe), state-мутации применяются всегда.
+    /// Skip для руин (decayLevel == 4) и legacy-проектов (templateName == nil).
+    /// Семантика: eraLevel = newEra ВСЕГДА (даже если шаблон не
+    /// подменили — это graceful degrade, следующий task_completed
+    /// попробует миграцию заново).
+    @discardableResult
+    private func applyEraProgression(
+        projectKey: String,
+        eventTs: Date,
+        silent: Bool
+    ) -> [(era: Int, migration: (from: String, to: String)?)] {
+        guard let project = state.projects[projectKey] else { return [] }
+        guard project.decayLevel < 4 else { return [] }   // ruin skip
+        guard project.templateName != nil else { return [] } // legacy proj skip
+
+        let ageDays = max(1,
+            Calendar.current.dateComponents([.day], from: project.createdAt, to: eventTs).day ?? 1)
+        let newEra = EraRules.computeEra(
+            taskCount: project.taskCount,
+            stage: project.stage,
+            ageDays: ageDays
+        )
+        let oldEra = project.eraLevel
+        guard newEra > oldEra else { return [] }
+
+        var results: [(era: Int, migration: (from: String, to: String)?)] = []
+        for targetEra in (oldEra + 1)...newEra {
+            // Подмена шаблона (опционально).
+            var mig: (from: String, to: String)? = nil
+            if let currentName = state.projects[projectKey]?.templateName,
+               let targetName = eraTemplateName(currentName: currentName, era: targetEra),
+               let nextTemplate = DistrictTemplateCatalog.byName(targetName),
+               targetName != currentName {
+                // Валидация позиций существующих юнитов.
+                let origin = project.districtOrigin
+                guard let currentTemplate = DistrictTemplateCatalog.byName(currentName) else {
+                    ErrorsLog.write("[era] district \(projectKey): current template \(currentName) not in catalog")
+                    continue
+                }
+                // Role-consistent template-placed units only (exclude legacy-fallback units that
+                // accidentally landed on slot coordinates with a mismatched role).
+                var currentSlotRolesEra: [GridPoint: SlotRole] = [:]
+                for slot in currentTemplate.slots {
+                    let abs = GridPoint(x: origin.x + slot.x, y: origin.y + slot.y)
+                    currentSlotRolesEra[abs] = slot.role
+                }
+                let allUnits = state.units.values.filter { $0.projectId == projectKey }
+                let templateUnits = allUnits.filter { unit in
+                    guard let slotRole = currentSlotRolesEra[unit.position] else { return false }
+                    return slotRole == unit.kind.preferredSlotRole
+                }
+                guard TemplateMigrationValidator.canMigrate(
+                    units: Array(templateUnits),
+                    to: nextTemplate,
+                    districtOrigin: origin
+                ) else {
+                    ErrorsLog.write("[era] district \(projectKey): cannot migrate \(currentName) → \(targetName), keeping \(currentName)")
+                    // era поднимаем, но шаблон не меняем
+                    results.append((era: targetEra, migration: nil))
+                    continue
+                }
+                if var p = state.projects[projectKey] {
+                    p.templateName = nextTemplate.name
+                    p.templateFamily = nextTemplate.family
+                    state.projects[projectKey] = p
+                }
+                mig = (currentName, nextTemplate.name)
+            }
+            results.append((era: targetEra, migration: mig))
+        }
+        // Финальная state-мутация eraLevel (один раз).
+        if var p = state.projects[projectKey] {
+            p.eraLevel = newEra
+            state.projects[projectKey] = p
+        }
+        return results
     }
 
     /// TASK-049 test seam — позволяет интеграционным тестам инжектить

@@ -16,6 +16,8 @@ struct GameEvent: Codable, Identifiable {
         /// TASK-049 F-25: миграция шаблона квартала при stage-up.
         /// title = "<fromTemplateName>|<toTemplateName>"
         case templateMigrated = "template_migrated"
+        /// TASK-050 F-25: era-up. title = "<era>" (Int as string).
+        case eraAdvanced = "era_advanced"
     }
 
     let id: UUID
@@ -68,6 +70,12 @@ extension GameEvent {
         let parts = title.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2 else { return nil }
         return (String(parts[0]), String(parts[1]))
+    }
+
+    /// TASK-050 F-25: Парсит title `eraAdvanced` формата "<era>".
+    static func eraAdvancedPayload(from title: String?) -> Int? {
+        guard let title, let era = Int(title) else { return nil }
+        return era
     }
 }
 

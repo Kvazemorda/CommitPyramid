@@ -14,8 +14,11 @@ enum DistrictTemplatePicker {
         let resolved = resolveFamily(family, biome: biome, seed: seed)
         guard let resolvedFamily = resolved else { return nil }
 
-        // 2. Кандидаты
-        let candidates = DistrictTemplateCatalog.byStage(stage, family: resolvedFamily)
+        // 2. Кандидаты (era-templates excluded — assigned only via applyEraProgression)
+        let allCandidates = DistrictTemplateCatalog.byStage(stage, family: resolvedFamily)
+        let candidates = allCandidates.filter { t in
+            !t.name.hasSuffix("-monumental") && !t.name.hasSuffix("-legacy")
+        }
         guard !candidates.isEmpty else { return nil }
 
         // 3. Biome filter (fallback если все отфильтрованы)

@@ -12,12 +12,13 @@ final class DistrictTemplateCatalogTests: XCTestCase {
 
     // MARK: - 1. Загрузка египетских шаблонов
 
-    /// Все 5 египетских шаблонов загружаются из Bundle.
+    /// Египетские шаблоны загружаются из Bundle.
+    /// TASK-050: добавлены era-шаблоны stage5-akhetaten-monumental и stage5-akhetaten-legacy → итого 7.
     func testLoadsAllEgyptianTemplates() {
         let templates = DistrictTemplateCatalog.byFamily("egyptian")
         XCTAssertEqual(
-            templates.count, 5,
-            "Ожидаем ровно 5 египетских шаблонов, получено: \(templates.count)"
+            templates.count, 7,
+            "Ожидаем 7 египетских шаблонов (5 base + 2 era), получено: \(templates.count)"
         )
     }
 

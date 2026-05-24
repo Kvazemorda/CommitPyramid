@@ -1,6 +1,78 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-24 (прогон TASK-049 — F-25 5/7, stage-up template migration)_
+_Актуально на: 2026-05-24 (прогон TASK-050 — F-25 6/7, era progression + monumental/legacy шаблоны)_
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 6: F-25 эпохи — TASK-050)
+
+**Закрыто:**
+- TASK-050 (D-25 часть 4/5) — era progression и monumental эпоха:
+  - `EraRules.swift` — новый pure-модуль: `computeEra(taskCount:stage:ageDays:) -> Int`
+    с 4 порогами (stage<5 → 0, 100/30 → 1, 500/180 → 2, 2000/365 → 3).
+    Проверки сверху вниз от старшего, чтобы legacy-проект 2000+/365+ за один тик
+    получал era 3.
+  - `TemplateSlot.minEra: Int` (default 0) + явный `init(from:)` для
+    backwards-compat (`decodeIfPresent ?? 0`).
+  - `GameEvent.Kind.eraAdvanced = "era_advanced"` + payload helper
+    `eraAdvancedPayload(from:)` (title = `<era>` Int as string).
+  - `CityEngine.applyEraProgression(project:silent:)` private — вызывается из
+    `applyTaskCompleted` после stage-migration блока. Считает
+    `ageDays = lastActivityAt - createdAt`, цикл
+    `for targetEra in (oldEra+1)...newEra`: era 1 → подмена ceremonial →
+    monumental, era 3 → monumental → legacy, era 2 → нет подмены (pyramid
+    активируется через `minEra: 2` слот). Skip при `decayLevel == 4` (руины) +
+    при `templateName == nil` (legacy mode).
+  - `CityEngine.apply()` switch: `.eraAdvanced: break` (state уже в applyTaskCompleted).
+  - `CityEngine.onEraAdvanced` callback, wired в AppDelegate.
+  - `GameScene.handleEraAdvanced(projectId:era:)` — золотая вспышка по контуру
+    квартала 2 сек (SKShapeNode + fadeIn/fadeOut sequence).
+  - `UnitPlanner.nextPosition` — фильтр `slot.minEra <= projectEraLevel` (новый
+    обязательный параметр без default, чтобы все call-site'ы явно прокинули era).
+  - `DistrictTemplatePicker.pick` — учитывает era при выборе шаблона
+    (`<base>-monumental` / `<base>-legacy`).
+  - 2 новых JSON-шаблона:
+    - `Resources/DistrictTemplates/egyptian/stage5-akhetaten-monumental.json` —
+      расширение ceremonial: обелиск-комплекс + палаццо 4×4 + pyramid 4×4
+      slot с `minEra: 2`.
+    - `Resources/DistrictTemplates/egyptian/stage5-akhetaten-legacy.json` —
+      финал era 3: библиотека + ритуальный бассейн + священная роща.
+    - `stage5-akhetaten-pyramid.json` НЕ создаём — pyramid реализован как
+      слот `minEra: 2` внутри monumental (упрощение из lead-разбора).
+  - 4 теста `EraRulesTests` (pure: zero ниже stage 5, пороги 1/2/3) — 4/4 PASS.
+  - 4 теста `CityEngineEraProgressionTests` (era advances on task,
+    3-уровневый скачок за тик, template migration сохраняет позиции, replay)
+    — 4/4 PASS.
+  - `JournalKindFilter` exhaustive switch — добавлен case `.eraAdvanced`.
+  - Lead-model: opus (revised); Run: sonnet executor + sonnet verify, без отклонений.
+
+**Прогресс F-25:** 6 из 7 sub-task'ов (TASK-047, 048a, 048b, 048c, 049, 050).
+Осталось: TASK-051 (Settings UI «Стиль города» + AppDelegate wire templateFamily).
+
+**Результат `swift test`:** 126/127 — 1 known-fail (BUG-020) = 126 PASS.
+
+**Изменения файлов за TASK-050:**
+- `Sources/CityDeveloper/Game/EraRules.swift` (НОВЫЙ, pure)
+- `Sources/CityDeveloper/Data/GameEvent.swift` (+1 case + payload helper)
+- `Sources/CityDeveloper/Game/Templates/DistrictTemplate.swift` (TemplateSlot.minEra + init(from:))
+- `Sources/CityDeveloper/Game/Templates/DistrictTemplatePicker.swift` (era-aware pick)
+- `Sources/CityDeveloper/Game/CityEngine.swift` (applyEraProgression + onEraAdvanced + integration)
+- `Sources/CityDeveloper/Game/GameScene.swift` (handleEraAdvanced + золотая вспышка)
+- `Sources/CityDeveloper/Game/UnitPlanner.swift` (slot.minEra filter + projectEraLevel param)
+- `Sources/CityDeveloper/App/AppDelegate.swift` (wire onEraAdvanced)
+- `Sources/CityDeveloper/UI/JournalKindFilter.swift` (+ case .eraAdvanced)
+- `Sources/CityDeveloper/Resources/DistrictTemplates/egyptian/stage5-akhetaten-monumental.json` (НОВЫЙ)
+- `Sources/CityDeveloper/Resources/DistrictTemplates/egyptian/stage5-akhetaten-legacy.json` (НОВЫЙ)
+- `Tests/CityDeveloperTests/EraRulesTests.swift` (НОВЫЙ, 4)
+- `Tests/CityDeveloperTests/CityEngineEraProgressionTests.swift` (НОВЫЙ, 4)
+- `Tests/CityDeveloperTests/CityEngineTemplateMigrationTests.swift` (era-aware adjustments)
+- `Tests/CityDeveloperTests/DistrictTemplateCatalogTests.swift` (minEra in fixtures)
+- `Tests/CityDeveloperTests/UnitPlannerSlotPlacementTests.swift` (era param в call-sites)
+
+**Follow-up для TASK-051:**
+- Wire `engine.templateFamily = appSettings.templateFamily` в AppDelegate.
+- Settings UI секция «Стиль города» (Picker auto/egyptian/mixed + Toggle preview).
+- `DistrictTemplatePicker` — реализация `"mixed"` family через SplitMix64.
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-24 (часть 5: F-25 миграция — TASK-049)
 
