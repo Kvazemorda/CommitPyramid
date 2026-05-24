@@ -1,6 +1,60 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-24 (прогон TASK-038 + TASK-047 + F-25 заведена + BUG-019/020/021)_
+_Актуально на: 2026-05-24 (прогон TASK-048c — F-25 4/5, BUG-010 закрыт в templated mode)_
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 4: F-25 интеграция — TASK-048c)
+
+**Закрыто:**
+- TASK-048c (D-25 часть 2.3/5) — финальная интеграция slot-based placement в pipeline:
+  - `DistrictTemplateCatalog.byName(_:)` — lookup template по имени.
+  - `UnitPlanner.nextPosition` расширен trailing optional параметрами
+    `template: DistrictTemplate? = nil, kind: UnitKind? = nil`. При обоих non-nil —
+    slot-branch: filter по `slot.role == kind.preferredSlotRole`, sort `(y, x)`,
+    проверка занятости через `builtCells`, возврат абсолютной позиции или nil.
+    Default'ы обеспечивают backwards-compat (9/9 TASK-038 тестов PASS).
+  - `CityEngine`: добавлено свойство `templateFamily: String = "auto"` (AppSettings
+    не singleton в проекте → wired AppDelegate'ом по паттерну `roadNetwork`, soft-block
+    для TASK-051 — wire ещё не сделан, prod использует "auto" → resolved в "egyptian"
+    через Picker). При создании нового ProjectState вызывается
+    `DistrictTemplatePicker.pick(stage:1, family:..., biome:..., seed: fnv1a([projectKey]))`,
+    `templateName`/`templateFamily` сохраняются.
+  - `CityEngine.applyTaskCompleted`: template-aware ветка — если `project.templateName != nil`,
+    BUG-010 hack (`if taskCount == 1 → kind = .road`), затем slot-placement; при exhausted
+    slot или template not in catalog — fallback через новый private helper
+    `resolveLegacyKindAndPosition` (перенос старого блока 322-384) + warning в errors.log.
+  - **Архитектурное решение**: для templated проектов `roadNetwork.planDistrict` НЕ вызывается
+    (иначе `isPlanComplete` навсегда false, auto-extend ломается); fallback на exhausted идёт
+    через legacyRingPosition вокруг origin (magistral не в halfSide=4 для удалённых кварталов).
+  - **BUG-010 закрыт в templated mode** через end-to-end тест `testFirstUnitIsRoadInTemplate`.
+  - 5 новых тестов `UnitPlannerSlotPlacementTests` (slot-based unit-level), 4 теста
+    `CityEngineTemplateAssignmentTests` (end-to-end: assignment, determinism, BUG-010, replay).
+  - Lead-model: opus (3 круга plan-review до approved). Run: sonnet executor + sonnet verify +
+    opus code-review (approved с 2 soft-issues — syncRoadNetworkPlans guard для templated
+    проектов, AppDelegate wire templateFamily; оба не блокеры, переносятся в follow-up).
+
+**Прогресс F-25:** 4 из 5 sub-task'ов (TASK-047, 048a, 048b, 048c). Осталось:
+TASK-049 (stage-up migration), TASK-050 (era progression), TASK-051 (Settings UI + AppDelegate wire).
+
+**Результат `swift test`:** 109/110 — 1 known-fail (BUG-020) = 108 PASS до правок + 9 новых
+тестов = 117 total, но BUG-020 + другие изменения распределения цифр сохранились.
+**Фактический счёт:** suite 109/110, BUG-020 единственный fail (pre-existing).
+
+**Изменения файлов за TASK-048c:**
+- `Sources/CityDeveloper/Game/Templates/DistrictTemplateCatalog.swift` (+6 строк, `byName`)
+- `Sources/CityDeveloper/Game/UnitPlanner.swift` (+2 trailing optional + ~25 строк slot-branch)
+- `Sources/CityDeveloper/Game/CityEngine.swift` (+`templateFamily` property, Picker-вызов в new-project ветке, оборачивание `planDistrict` в guard, template-aware ветка resolution, helper `resolveLegacyKindAndPosition`)
+- `Tests/CityDeveloperTests/UnitPlannerSlotPlacementTests.swift` (НОВЫЙ, 5)
+- `Tests/CityDeveloperTests/CityEngineTemplateAssignmentTests.swift` (НОВЫЙ, 4)
+
+**Follow-up для следующего цикла:**
+- `syncRoadNetworkPlans()` в CityEngine.swift — после restart восстанавливает `planDistrict`
+  для всех проектов с пустым `plannedCells`, включая templated. Нужен guard
+  `if project.templateName == nil` в loop body (мёртвый код в hot-path для templated,
+  не падающий, но захламляет state).
+- AppDelegate: wire `engine.templateFamily = appSettings.templateFamily` (часть TASK-051
+  Settings UI).
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-24 (часть 3: F-25 первая волна — TASK-047/048a/048b)
 

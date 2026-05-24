@@ -284,8 +284,34 @@ struct UnitPlanner {
         buildingIndex: Int,
         roadCells: Set<GridPoint>,
         builtCells: Set<GridPoint>,
-        unitSize: GridSize = GridSize(width: 1, height: 1)
+        unitSize: GridSize = GridSize(width: 1, height: 1),
+        template: DistrictTemplate? = nil,
+        kind: UnitKind? = nil
     ) -> GridPoint? {
+        // TASK-048c F-25: slot-based placement for templated districts.
+        if let t = template, let k = kind {
+            let targetRole = k.preferredSlotRole
+            let sorted = t.slots
+                .filter { $0.role == targetRole }
+                .sorted { ($0.y, $0.x) < ($1.y, $1.x) }
+            for slot in sorted {
+                // Check occupancy: intersection of slot footprint with builtCells.
+                var occupied = false
+                outer: for dx in 0..<slot.footprint.width {
+                    for dy in 0..<slot.footprint.height {
+                        let cell = GridPoint(
+                            x: origin.x + slot.x + dx,
+                            y: origin.y + slot.y + dy)
+                        if builtCells.contains(cell) { occupied = true; break outer }
+                    }
+                }
+                if !occupied {
+                    return GridPoint(x: origin.x + slot.x, y: origin.y + slot.y)
+                }
+            }
+            return nil  // exhausted — CityEngine will fall back to legacy
+        }
+
         let i = max(0, buildingIndex)
 
         // Fallback: legacy-кольцо вокруг origin (если карты дорог нет).

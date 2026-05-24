@@ -40,6 +40,10 @@ final class CityEngine: ObservableObject {
     /// Задаётся из GameScene после buildRoadNetwork (опционально; nil → legacy-ring размещение).
     weak var roadNetwork: RoadNetwork?
 
+    /// TASK-048c F-25: district template family, forwarded from AppSettings.
+    /// Default "auto" → Picker resolves to "egyptian" (MVP). AppDelegate sets this after init.
+    var templateFamily: String = "auto"
+
     private var periodicSnapshotTimer: DispatchSourceTimer?
 
     init(eventLog: EventLog = EventLog(), snapshotStore: SnapshotStore = SnapshotStore()) {
@@ -285,14 +289,32 @@ final class CityEngine: ObservableObject {
                 lastDecayLogged: 0,
                 districtOrigin: origin,
                 unitIds: [],
-                templateName: nil,        // TASK-048c assign через Picker
-                templateFamily: nil,      // TASK-048c assign
+                templateName: nil,        // TASK-048c assign через Picker ниже
+                templateFamily: nil,      // TASK-048c assign ниже
                 eraLevel: 0               // TASK-050 будет менять
             )
 
-            // Запланировать дорогу квартала (branch + ring). Реальная постройка —
-            // покритично, по одной клетке за task: см. ниже выбор kind.
-            roadNetwork?.planDistrict(projectId: projectKey, origin: origin)
+            // TASK-048c F-25: pick district template for new project.
+            let resolvedFamily = templateFamily
+            let pickSeed = fnv1a(combining: [projectKey])
+            let pickBiome = biomeReader?.biome(atX: origin.x, y: origin.y)
+            if let picked = DistrictTemplatePicker.pick(
+                stage: 1,
+                family: resolvedFamily,
+                biome: pickBiome,
+                seed: pickSeed
+            ) {
+                project.templateName = picked.name
+                project.templateFamily = picked.family
+            }
+
+            // Запланировать дорогу квартала ТОЛЬКО для legacy-проектов (без template).
+            // Templated-проекты не используют RoadNetwork plan — road-юниты ставятся
+            // в road-слоты template. Fallback (template exhausted) использует
+            // legacy nextPosition с магистралью в roadCells / legacyRingPosition.
+            if project.templateName == nil {
+                roadNetwork?.planDistrict(projectId: projectKey, origin: origin)
+            }
         }
 
         // Собираем per-category счётчики для проекта (O(N) по units; до ~100 юнитов — микросекунды).
@@ -317,70 +339,92 @@ final class CityEngine: ObservableObject {
             }
         }
 
-        // Дорога строится первой: пока в плане квартала есть непостроенные клетки —
-        // текущая задача даёт следующую road-клетку. Когда план исчерпан — обычная логика.
+        // TASK-048c F-25: template-aware kind + position resolution.
         let kind: UnitKind
         let placedPos: GridPoint
-        if let rn = roadNetwork,
-           !rn.isPlanComplete(for: projectKey),
-           let roadCell = rn.consumeNextPlanCell(for: projectKey) {
-            kind = .road
-            placedPos = roadCell
+
+        if let templateName = project.templateName,
+           let template = DistrictTemplateCatalog.byName(templateName) {
+            // BUG-010 fix (templated mode only): first unit is always road.
+            let resolvedKind: UnitKind
+            if project.taskCount == 1 {
+                resolvedKind = .road
+            } else {
+                let districtBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
+                resolvedKind = unitPlanner.nextUnitKind(
+                    forTaskIndex: project.taskCount,
+                    stage: project.stage,
+                    biome: districtBiome,
+                    residentialCount: residentialCount,
+                    wellCount: wellCount,
+                    infraCount: infraCount,
+                    productionCount: productionCount,
+                    socialCount: socialCount
+                )
+            }
+            // Collect occupiedCells for this project's units.
+            let builtSet = Set(state.units.values
+                .filter { $0.projectId == projectKey }
+                .flatMap { unit -> [GridPoint] in
+                    let s = unit.kind.size
+                    var cells: [GridPoint] = []
+                    for dx in 0..<s.width {
+                        for dy in 0..<s.height {
+                            cells.append(GridPoint(
+                                x: unit.position.x + dx,
+                                y: unit.position.y + dy))
+                        }
+                    }
+                    return cells
+                })
+            let planLen = roadNetwork?.plannedCells(for: projectKey).count ?? 0
+            let buildingIndex = max(0, project.taskCount - planLen - 1)
+            if let slotPos = unitPlanner.nextPosition(
+                origin: project.districtOrigin,
+                buildingIndex: buildingIndex,
+                roadCells: roadNetwork?.allCells ?? [],
+                builtCells: builtSet,
+                unitSize: resolvedKind.size,
+                template: template,
+                kind: resolvedKind
+            ) {
+                kind = resolvedKind
+                placedPos = slotPos
+            } else {
+                // Template exhausted (no free slot for this role) → fallback to legacy.
+                ErrorsLog.write("[template] district \(projectKey) exceeded slot capacity for role \(resolvedKind.preferredSlotRole.rawValue), falling back to legacy placement")
+                let legacy = resolveLegacyKindAndPosition(
+                    project: project,
+                    projectKey: projectKey,
+                    residentialCount: residentialCount,
+                    wellCount: wellCount,
+                    infraCount: infraCount,
+                    productionCount: productionCount,
+                    socialCount: socialCount,
+                    silent: silent
+                )
+                guard let legacy else { return }
+                kind = legacy.kind
+                placedPos = legacy.pos
+            }
         } else {
-            // TASK-035 F-16: передаём биом клетки квартала (nil → uniform, back-compat).
-            let districtBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
-            kind = unitPlanner.nextUnitKind(
-                forTaskIndex: project.taskCount,
-                stage: project.stage,
-                biome: districtBiome,
+            // Legacy path (templateName == nil or template not found in catalog).
+            if let tName = project.templateName {
+                ErrorsLog.write("[template] district \(projectKey): template \(tName) not found in catalog, falling back to legacy")
+            }
+            let legacy = resolveLegacyKindAndPosition(
+                project: project,
+                projectKey: projectKey,
                 residentialCount: residentialCount,
                 wellCount: wellCount,
                 infraCount: infraCount,
                 productionCount: productionCount,
-                socialCount: socialCount
+                socialCount: socialCount,
+                silent: silent
             )
-            // buildingIndex считаем как «task - длина плана» (роудтаски не считаются зданиями).
-            let planLen = roadNetwork?.plannedCells(for: projectKey).count ?? 0
-            let buildingIndex = max(0, project.taskCount - planLen - 1)
-
-            // Реактивный extendDistrictPlan (TASK-041):
-            // Пробуем найти позицию; если nil — добавляем петлю и повторяем (до 5 раз).
-            var foundPos: GridPoint? = nil
-            var extends = 0
-            while foundPos == nil && extends < 5 {
-                let builtSet = Set(state.units.values
-                    .filter { $0.projectId == projectKey }
-                    .flatMap { unit -> [GridPoint] in
-                        let s = unit.kind.size
-                        var cells: [GridPoint] = []
-                        for dx in 0..<s.width {
-                            for dy in 0..<s.height {
-                                cells.append(GridPoint(
-                                    x: unit.position.x + dx,
-                                    y: unit.position.y + dy))
-                            }
-                        }
-                        return cells
-                    })
-                foundPos = unitPlanner.nextPosition(
-                    origin: project.districtOrigin,
-                    buildingIndex: buildingIndex,
-                    roadCells: roadNetwork?.allCells ?? [],
-                    builtCells: builtSet,
-                    unitSize: kind.size
-                )
-                if foundPos == nil {
-                    extends += 1
-                    let added = roadNetwork?.extendDistrictPlan(projectId: projectKey) ?? []
-                    if added.isEmpty { break }
-                    if !silent { onRoadCellsAdded?(added) }
-                }
-            }
-            guard let resolved = foundPos else {
-                ErrorsLog.write("CityEngine: no position for unit \(kind.rawValue) in \(projectKey) — skipping")
-                return
-            }
-            placedPos = resolved
+            guard let legacy else { return }
+            kind = legacy.kind
+            placedPos = legacy.pos
         }
 
         let unit = UnitState(
@@ -510,6 +554,81 @@ final class CityEngine: ObservableObject {
         }
 
         return false
+    }
+
+    // MARK: - TASK-048c: Legacy kind+position resolver (fallback from template-aware path)
+
+    /// Resolves kind and position using the legacy RoadNetwork plan / extendDistrictPlan approach.
+    /// Called either when templateName == nil or when template slot-placement is exhausted.
+    /// Parameter `project` is NOT inout — legacy block does not modify ProjectState.
+    private func resolveLegacyKindAndPosition(
+        project: ProjectState,
+        projectKey: String,
+        residentialCount: Int,
+        wellCount: Int,
+        infraCount: Int,
+        productionCount: Int,
+        socialCount: Int,
+        silent: Bool
+    ) -> (kind: UnitKind, pos: GridPoint)? {
+        // Road-first: while planned cells remain unconsumed, place a road.
+        if let rn = roadNetwork,
+           !rn.isPlanComplete(for: projectKey),
+           let roadCell = rn.consumeNextPlanCell(for: projectKey) {
+            return (.road, roadCell)
+        }
+        // Building placement: TASK-035 F-16 biome-aware kind selection.
+        let districtBiome = biomeReader?.biome(atX: project.districtOrigin.x, y: project.districtOrigin.y)
+        let kind = unitPlanner.nextUnitKind(
+            forTaskIndex: project.taskCount,
+            stage: project.stage,
+            biome: districtBiome,
+            residentialCount: residentialCount,
+            wellCount: wellCount,
+            infraCount: infraCount,
+            productionCount: productionCount,
+            socialCount: socialCount
+        )
+        let planLen = roadNetwork?.plannedCells(for: projectKey).count ?? 0
+        let buildingIndex = max(0, project.taskCount - planLen - 1)
+
+        // Reactive extendDistrictPlan (TASK-041): retry up to 5 times if no position found.
+        var foundPos: GridPoint? = nil
+        var extends = 0
+        while foundPos == nil && extends < 5 {
+            let builtSet = Set(state.units.values
+                .filter { $0.projectId == projectKey }
+                .flatMap { unit -> [GridPoint] in
+                    let s = unit.kind.size
+                    var cells: [GridPoint] = []
+                    for dx in 0..<s.width {
+                        for dy in 0..<s.height {
+                            cells.append(GridPoint(
+                                x: unit.position.x + dx,
+                                y: unit.position.y + dy))
+                        }
+                    }
+                    return cells
+                })
+            foundPos = unitPlanner.nextPosition(
+                origin: project.districtOrigin,
+                buildingIndex: buildingIndex,
+                roadCells: roadNetwork?.allCells ?? [],
+                builtCells: builtSet,
+                unitSize: kind.size
+            )
+            if foundPos == nil {
+                extends += 1
+                let added = roadNetwork?.extendDistrictPlan(projectId: projectKey) ?? []
+                if added.isEmpty { break }
+                if !silent { onRoadCellsAdded?(added) }
+            }
+        }
+        guard let resolved = foundPos else {
+            ErrorsLog.write("CityEngine: no position for unit \(kind.rawValue) in \(projectKey) — skipping")
+            return nil
+        }
+        return (kind, resolved)
     }
 
     /// Детерминированный выбор руины для нового проекта (F-06).

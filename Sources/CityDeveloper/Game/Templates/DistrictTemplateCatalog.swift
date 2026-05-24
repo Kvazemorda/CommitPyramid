@@ -33,6 +33,10 @@ enum DistrictTemplateCatalog {
         byFamily(family).filter { $0.stage == stage }
     }
 
+    static func byName(_ name: String) -> DistrictTemplate? {
+        all().first(where: { $0.name == name })
+    }
+
     static func availableFamilies() -> Set<String> {
         Set(all().map(\.family))
     }
