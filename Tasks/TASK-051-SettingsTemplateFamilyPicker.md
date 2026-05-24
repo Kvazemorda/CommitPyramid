@@ -598,4 +598,4 @@ _Объём: M_
 - Plan-review: revised (круг 1 needs-revision → 4 правки → круг 2 approved)
 - Code-review: revised (круг 1 needs-revision: silhouette container в `world`, не scene root → fix → круг 2 approved)
 - Завершена: 2026-05-24
-- Коммит: —
+- Коммит: 38c211e
