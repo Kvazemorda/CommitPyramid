@@ -51,6 +51,17 @@ final class CityEngine: ObservableObject {
     /// Default "auto" → Picker resolves to "egyptian" (MVP). AppDelegate sets this after init.
     var templateFamily: String = "auto"
 
+    /// TASK-030b F-15: callback для UI-триггера reinit. AppDelegate проставляет
+    /// замыкание, которое вызывает MapReinitCoordinator. nil → нет UI-wire.
+    /// Параметр: новый seed (nil → случайный).
+    var onMapReinitRequested: ((UInt64?) -> Void)?
+
+    /// TASK-030b F-15: флаг «движок на паузе» (для атомарного reinit).
+    /// pauseSimulation() ставит true, resumeSimulation() сбрасывает.
+    /// При true — ingestTaskCompletion/IfUnique игнорируют ingest, а
+    /// checkPeriodicSnapshot пропускает saveSnapshot.
+    private(set) var isPaused: Bool = false
+
     private var periodicSnapshotTimer: DispatchSourceTimer?
 
     init(eventLog: EventLog = EventLog(), snapshotStore: SnapshotStore = SnapshotStore()) {
@@ -88,6 +99,32 @@ final class CityEngine: ObservableObject {
         snapshotStore.url = directory.appendingPathComponent("state.json")
     }
 
+    // MARK: - TASK-030b F-15: Pause/Resume + Reinit hooks
+
+    /// Останавливает приём новых событий из watcher'ов.
+    /// DecayEngine.stop() координатор делает отдельно (через DI).
+    func pauseSimulation() {
+        isPaused = true
+    }
+
+    /// Возобновляет приём событий после reinit.
+    func resumeSimulation() {
+        isPaused = false
+    }
+
+    /// TASK-030b: сбрасывает state до empty и replay'ит весь events.jsonl.
+    /// Coordinator вызывает после удаления state.json — replay пройдёт по
+    /// полному логу с нуля. Внутри: state = CityState(), очистка
+    /// snapshot-индексов, events = [], replayFromLog().
+    /// Идемпотентен (повторный вызов даёт тот же результат).
+    func resetStateAndReplay() {
+        state = CityState()
+        eventsSinceSnapshot = 0
+        lastSnapshotEventIndex = -1
+        events = []
+        replayFromLog()
+    }
+
     /// Записывает системное событие в лог, применяет к state и триггерит визуальные колбэки.
     /// Вызывается из DecayEngine на main queue и из applyTaskCompleted.
     /// `title` — человекочитаемое описание (имя юнита, "S<old> → S<new>" и т.п.).
@@ -108,11 +145,19 @@ final class CityEngine: ObservableObject {
     /// Used by `NotesWatcher` (and future `GitWatcher`); `TasksJsonlWatcher`
     /// continues to call `ingestTaskCompletion` directly.
     func ingestTaskCompletionIfUnique(project: String, title: String, taskId: String?, source: String, ts: Date) {
+        guard !isPaused else {
+            ErrorsLog.write("CityEngine: ingest skipped (unique) — engine paused (map reinit in progress)")
+            return
+        }
         guard !events.contains(where: { $0.source == source }) else { return }
         ingestTaskCompletion(project: project, title: title, taskId: taskId, source: source, ts: ts)
     }
 
     func ingestTaskCompletion(project: String, title: String, taskId: String?, source: String?, ts: Date) {
+        guard !isPaused else {
+            ErrorsLog.write("CityEngine: ingest skipped — engine paused (map reinit in progress)")
+            return
+        }
         let event = GameEvent(
             ts: ts,
             kind: .taskCompleted,
@@ -129,7 +174,9 @@ final class CityEngine: ObservableObject {
         if eventsSinceSnapshot >= 500 { saveSnapshot() }
     }
 
-    private func replayFromLog() {
+    /// TASK-030b: открыт как internal — координатор перезапускает replay
+    /// после сброса state в `resetStateAndReplay()`.
+    func replayFromLog() {
         if let snap = snapshotStore.load() {
             let all = eventLog.readAll()
             // Edge case: пустой лог + snap с lastEventIndex == -1
@@ -175,6 +222,9 @@ final class CityEngine: ObservableObject {
     }
 
     private func checkPeriodicSnapshot() {
+        // TASK-030b: пропускаем периодический snapshot, если в процессе reinit —
+        // иначе можем сохранить state в момент сброса.
+        guard !isPaused else { return }
         guard let snap = snapshotStore.load() else { saveSnapshot(); return }
         if Date().timeIntervalSince(snap.snapshotTs) >= 86400 && eventsSinceSnapshot > 0 {
             saveSnapshot()

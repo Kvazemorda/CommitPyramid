@@ -246,6 +246,20 @@ final class GameScene: SKScene {
         ]))
     }
 
+    /// TASK-030b F-15: координатор завершил пересборку карты — выполняем
+    /// чистый rebuild сцены. worldMap уже подменена координатором (или
+    /// проставляется параллельно). Reuse `resetScene()`: он сносит tile/road/
+    /// district/unit ноды и пересоздаёт всё от текущего `engine.state`
+    /// (уже после replayFromLog с новыми origin'ами).
+    /// - Parameter newSeed: для лог-вывода (UInt64-биты текущего seed карты).
+    func handleMapReinitComplete(newSeed: UInt64) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.didAttach else { return }
+            ErrorsLog.write("[map-reinit] scene rebuild seed=\(newSeed)")
+            self.resetScene()
+        }
+    }
+
     func placeUnit(_ unit: UnitState, project: ProjectState) {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.didAttach else { return }

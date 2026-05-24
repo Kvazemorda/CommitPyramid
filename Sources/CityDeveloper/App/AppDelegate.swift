@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notesWatcher: NotesWatcher!
     private var gitWatcher: GitWatcher!
     private var worldMapProvider: WorldMapProvider!
+    private var mapReinitCoordinator: MapReinitCoordinator!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.migrateLegacyApplicationSupport()
@@ -196,17 +197,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
 
+        // TASK-030b F-15: оркестратор атомарной пересборки карты.
+        // wire engine → coordinator → scene; UI-триггер (settings "Сбросить карту")
+        // вызывает engine.onMapReinitRequested(seed?) → координатор делает reinit.
+        mapReinitCoordinator = MapReinitCoordinator()
+        mapReinitCoordinator.engine = engine
+        mapReinitCoordinator.worldMapProvider = worldMapProvider
+        mapReinitCoordinator.decayEngine = decayEngine
+        mapReinitCoordinator.scene = scene
+        mapReinitCoordinator.appSettings = appSettings
+        mapReinitCoordinator.dataDirectory = appSettings.dataDirectory
+
+        engine.onMapReinitRequested = { [weak self] seed in
+            guard let self = self else { return }
+            Task { @MainActor in
+                do {
+                    try await self.mapReinitCoordinator.reinit(newSeed: seed)
+                } catch MapReinitError.alreadyInProgress {
+                    let alert = NSAlert()
+                    alert.messageText = "Пересборка уже идёт"
+                    alert.informativeText = "Дождитесь окончания текущей пересборки карты."
+                    alert.runModal()
+                } catch {
+                    let alert = NSAlert()
+                    alert.messageText = "Не удалось пересобрать карту"
+                    alert.informativeText = "Восстановлено прежнее состояние. \(error.localizedDescription)"
+                    alert.runModal()
+                    ErrorsLog.write("[map-reinit] failed: \(error)")
+                }
+            }
+        }
+
         decayEngine.start()
 
         NSLog("CommitPyramid started. Data root: \(AppPaths.appSupport.path)")
     }
 
+    @MainActor
     private func applySettings() {
         watcher.restart(at: appSettings.tasksJsonlPath)
         engine.templateFamily = appSettings.templateFamily
         engine.relocateEventLog(to: appSettings.dataDirectory)
         engine.relocateSnapshotStore(to: appSettings.dataDirectory)
         engine.saveSnapshot()
+        // TASK-030b: координатор должен видеть актуальный dataDirectory
+        // (state.json/.bak/worldmap.json) — иначе backup/rollback не найдут файлы.
+        mapReinitCoordinator?.dataDirectory = appSettings.dataDirectory
         hotkey.unregister()
         let ok = hotkey.register(keyCode: appSettings.hotkeyKeyCode, modifiers: appSettings.hotkeyModifiers)
         if !ok {
