@@ -735,4 +735,4 @@ _Объём: M_
 - Verify: pass (4/4 + 4/4 новых, 9/9 регресс TASK-038, 4/4 регресс CityEngineTests, 4/4 регресс TASK-048c, 7/7 регресс DistrictTemplateCatalogTests, full suite 117/118 с 1 known-fail BUG-020)
 - Code-review: approved (opus, 3 non-blocking notes: log forging теор., templateUnits filter архитектурное уточнение, tag `[template-migration]` отдельная подсистема)
 - Завершена: 2026-05-24
-- Коммит: —
+- Коммит: 3344c7d
