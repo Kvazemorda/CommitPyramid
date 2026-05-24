@@ -799,4 +799,4 @@ _Объём: M_
 - Исполнитель: opus
 - Code-review: approved (opus, 8 minor scope-cut notes — все as-designed, не блокеры)
 - Завершена: 2026-05-24
-- Коммит: —
+- Коммит: 9462d6a
