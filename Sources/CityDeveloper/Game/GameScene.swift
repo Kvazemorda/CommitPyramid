@@ -374,8 +374,12 @@ final class GameScene: SKScene {
         let scale = max(spanW, spanH)
         node.setScale(scale)
         node.position = pos
-        // z-sort: lower-front corner = (x + y + (w-1) + (h-1)); negate for painter's order.
-        node.zPosition = -CGFloat(unit.position.x + unit.position.y + gridSize.width + gridSize.height - 2)
+        // z-sort: far corner = (x + y + (w-1) + (h-1)). Negate for painter's order.
+        // TASK-052 BUG-019: road kind units получают -0.5 offset, чтобы оставаться под
+        // buildings того же far-sum (layer-z hierarchy: road < buildings < citizens).
+        let farSum = unit.position.x + unit.position.y + gridSize.width + gridSize.height - 2
+        let layerOffset: CGFloat = (unit.kind == .road) ? -0.5 : 0.0
+        node.zPosition = -CGFloat(farSum) + layerOffset
         node.userData = node.userData ?? NSMutableDictionary()
         node.userData?[Self.unitIdKey] = unit.id
         node.userData?[Self.projectIdKey] = unit.projectId

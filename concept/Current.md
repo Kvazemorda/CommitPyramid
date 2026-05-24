@@ -1,6 +1,29 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-24 (прогон TASK-051 — F-25 финал: Settings UI «Стиль города»)_
+_Актуально на: 2026-05-24 (прогон TASK-052 — BUG-019 z-sort layer-z для road)_
+
+## ⏱ Что сделано за прогон 2026-05-24 (часть 8: BUG-019 — TASK-052)
+
+**Закрыто:**
+- TASK-052 (BUG-019, P1) — z-sort с учётом footprint + layer-z для road:
+  - `GameScene.drawUnit:380` — `farSum = x + y + w + h − 2` (дальний угол) +
+    `layerOffset = -0.5` при `kind == .road`. Гарантирует road < buildings
+    < citizens (citizens уже на `+0.5` в `CitizenManager`).
+  - `ZSortInvariantsTests` — 5 property-кейсов: same-layer (1×1+1×1, 2×2+2×2),
+    cross-anchor (1×1+2×2 как регресс-щит TASK-044), same-farSum (road vs building),
+    cross-layer (far road vs near building).
+  - `swapStageSprite`/`swapEvolvedSprite` не задействованы — меняют только child
+    "building" sprite, container z остаётся от drawUnit.
+  - Code-review: opus (триггер P1), approved. Run: haiku executor.
+
+**Результат `swift test`:** 165/166 + 1 skip — 1 known-fail (BUG-020) = 165 PASS,
++5 новых property-тестов.
+
+**Изменения файлов за TASK-052:**
+- `Sources/CityDeveloper/Game/GameScene.swift` (z-формула + layerOffset)
+- `Tests/CityDeveloperTests/ZSortInvariantsTests.swift` (новый, 5 тестов)
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-24 (часть 7: F-25 финал — TASK-051)
 
