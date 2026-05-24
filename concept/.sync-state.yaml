@@ -1,8 +1,8 @@
 core_collapse_threshold: 3
 last_sync_date: "2026-05-24"
-last_sync_commit: "5c8150d"
+last_sync_commit: "2f8a7db"
 last_report_date: "2026-05-24"
-last_report_ref: "5c8150d"
+last_report_ref: "2f8a7db"
 feature_stability:
   F-01: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
   F-02: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
