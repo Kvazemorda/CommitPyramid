@@ -20,13 +20,22 @@ final class AppSettings: ObservableObject {
     }
     /// F-24: multiplier applied to git-commit weight during performScan.
     /// Range 0.05…2.0, default 0.1 (≈1 unit per commit regardless of diff size).
+    /// didSet guard защищает от бесконечной рекурсии — переприсваиваем ТОЛЬКО
+    /// если значение реально выходит за пределы (иначе Swift всегда зовёт didSet
+    /// при любом set, включая один и тот же value → stack overflow).
     @Published var commitWeightMultiplier: Double = 0.1 {
-        didSet { commitWeightMultiplier = min(max(commitWeightMultiplier, 0.05), 2.0) }
+        didSet {
+            let clamped = min(max(commitWeightMultiplier, 0.05), 2.0)
+            if clamped != commitWeightMultiplier { commitWeightMultiplier = clamped }
+        }
     }
     /// F-24: multiplier for notes/tasks.jsonl ingestion weight during performScan.
     /// Range 0.5…5.0, default 1.0 (1 unit per closed task).
     @Published var taskWeightMultiplier: Double = 1.0 {
-        didSet { taskWeightMultiplier = min(max(taskWeightMultiplier, 0.5), 5.0) }
+        didSet {
+            let clamped = min(max(taskWeightMultiplier, 0.5), 5.0)
+            if clamped != taskWeightMultiplier { taskWeightMultiplier = clamped }
+        }
     }
 
     private static let key = "com.commitpyramid.app.settings"
