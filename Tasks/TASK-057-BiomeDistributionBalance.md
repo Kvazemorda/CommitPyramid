@@ -931,4 +931,4 @@ _Сложность: senior_
 - Исполнитель: opus (executor) + sonnet (verify) + opus (code-review)
 - Code-review: approved (Opus, round 1, 3 non-blocking observations)
 - Завершена: 2026-05-25
-- Коммит: pending
+- Коммит: d13f490
