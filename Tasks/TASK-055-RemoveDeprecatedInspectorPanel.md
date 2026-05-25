@@ -389,4 +389,4 @@ _Сложность: —_ (определит лид)
 - Исполнитель: haiku
 - Code-review: approved (Opus, P1 trigger; 0 issues — удаление чистое, dead code исчез, semantics не задеты)
 - Завершена: 2026-05-25
-- Коммит: (заполнится после git commit)
+- Коммит: f55b297
