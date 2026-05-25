@@ -1,6 +1,33 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-24 (прогон TASK-052 — BUG-019 z-sort layer-z для road)_
+_Актуально на: 2026-05-25 (прогон TASK-053 — BUG-020 won't-fix cleanup)_
+
+## ⏱ Что сделано за прогон 2026-05-25 (TASK-053 — BUG-020 cleanup)
+
+**Закрыто:**
+- TASK-053 (BUG-020, P1) — `testRiversHaveReasonableWidth` падал на любом
+  seed, потому что `BiomeClassifier.carveRivers` был удалён из pipeline
+  ещё в коммите 31acaad («Реки отключены — плохо рендерились, пересекали
+  город и дороги»). PM-фикс «сменить seed» технически невозможен. Принято
+  решение won't-fix: удалить мёртвый код + удалить тест.
+  - `BiomeClassifier.swift`: удалены `carveRivers` / `carveOnePath` /
+    `riverSourceCount` / `maxRiverHalfWidth`. Из комментария распределения
+    биомов убрано `river≈1%` (фича отключена). Enum `BiomeKind.river`
+    сохранён — используется в `CityState`/`terrain` matching и tileset.
+  - `BiomeClassifierTests.swift`: удалён `testRiversHaveReasonableWidth`.
+  - `Bugs.md`: BUG-020 → Закрытые с пометкой won't-fix и описанием cleanup'а.
+  - Возврат фичи рек = отдельный продуктовый запрос с решением рендера и
+    road-conflict.
+
+**Результат `swift test`:** 165/165 + 1 skip (BUG-020 known-fail устранён,
+не за счёт фикса — за счёт удаления нерелевантного теста).
+
+**Изменения файлов за TASK-053:**
+- `Sources/CityDeveloper/World/BiomeClassifier.swift` (cleanup мёртвого кода)
+- `Tests/CityDeveloperTests/BiomeClassifierTests.swift` (удалён один тест)
+- `concept/Bugs.md` (BUG-020 → Закрытые)
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-24 (часть 8: BUG-019 — TASK-052)
 

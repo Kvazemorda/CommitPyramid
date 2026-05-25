@@ -46,9 +46,6 @@ struct BiomeClassifier {
     /// Минимальная доля каждого биома (BUG-008: цель ≥5%).
     static let minBiomeShare: Double = 0.05
 
-    /// Число истоков рек. Берём топ-N пиков по высоте.
-    static let riverSourceCount: Int = 5
-
     /// Базовый радиус морского блоба в долях стороны карты.
     /// 0.22 при W=256 → r≈56 (≈9.5% площади до клампа углами). При W=16 → r≈3.5.
     static let seaBlobRadiusFraction: Double = 0.22
@@ -167,7 +164,10 @@ struct BiomeClassifier {
     ///      d. meadow  — дефолт (умеренные условия)            (~40% суши → ~20% карты)
     ///
     /// Ожидаемое распределение (типичный seed):
-    ///   sea≈30%  mountain≈10%  stone≈15%  desert≈12%  forest≈12%  meadow≈20%  river≈1%
+    ///   sea≈30%  mountain≈10%  stone≈15%  desert≈12%  forest≈12%  meadow≈20%
+    /// Реки (.river) сейчас не генерируются — фича отключена (см. коммит 31acaad,
+    /// плохой рендер и пересечение с дорогами/городом). Enum-case `.river` остаётся
+    /// для совместимости с CityState/terrain и tileset.
     private static func classifyLand(world: NoiseMap, W: Int, thresholds t: Thresholds) -> [BiomeKind] {
         let n = W * W
         var cells = [BiomeKind](repeating: .meadow, count: n)
@@ -293,91 +293,6 @@ struct BiomeClassifier {
             }
         }
         return counts.max(by: { $0.value < $1.value })?.key ?? .meadow
-    }
-
-    // MARK: - Шаг 4: carveRivers — downhill tracing
-
-    /// Трассирует реки от топ-N пиков по высоте вниз до моря/края карты.
-    /// Истоки выбираются детерминированно: сортируем по убыванию height[i],
-    /// берём первые riverSourceCount, у которых биом НЕ mountain (чтобы реки
-    /// начинались на предгорье/камнях, а не на макушке горы).
-    private static func carveRivers(cells: inout [BiomeKind], W: Int, H: Int,
-                                     world: NoiseMap, thresholds: Thresholds) {
-        let n = W * H
-
-        // Собираем кандидаты: камни или предгорье (высота >= stoneLevel, < mountainLevel)
-        // Для детерминизма — только индексы, сортированные по убыванию height[i]
-        let candidates = (0 ..< n)
-            .filter { cells[$0] == .stone }
-            .sorted { world.height[$0] > world.height[$1] }
-
-        // Берём до riverSourceCount истоков, равномерно распределённых по списку
-        let stride = max(1, candidates.count / riverSourceCount)
-        let sources: [Int] = (0 ..< riverSourceCount).compactMap { k in
-            let idx = k * stride
-            return idx < candidates.count ? candidates[idx] : nil
-        }
-
-        for source in sources {
-            carveOnePath(from: source, cells: &cells, W: W, H: H, world: world)
-        }
-    }
-
-    /// Прокладывает одну реку от source вниз по градиенту высоты до моря или края.
-    /// Ограничивает меандрирование: ширина русла (отклонение от стартовой колонки) ≤ maxRiverHalfWidth.
-    private static let maxRiverHalfWidth = 15  // was 3, increased for natural meandering
-
-    private static func carveOnePath(from startIdx: Int, cells: inout [BiomeKind],
-                                      W: Int, H: Int, world: NoiseMap) {
-        var cur = startIdx
-        var visited = Set<Int>()
-        let startX = startIdx % W
-        // Максимальная длина пути — чтобы не зациклиться на плато
-        let maxSteps = W + H
-
-        for _ in 0 ..< maxSteps {
-            guard !visited.contains(cur) else { break }
-            visited.insert(cur)
-
-            if cells[cur] == .sea || cells[cur] == .river {
-                // Достигли моря или уже существующей реки — конец пути.
-                // Остановка на .river предотвращает слияние компонент и сохраняет отдельные русла.
-                break
-            }
-
-            // Помечаем текущую клетку рекой (если не гора)
-            if cells[cur] != .mountain {
-                cells[cur] = .river
-            }
-
-            // Шаг вниз по самому крутому градиенту среди 4 соседей.
-            // Кандидаты ограничены полосой ±maxRiverHalfWidth клеток от стартовой X-позиции,
-            // чтобы река не меандрировала в квадратную «лужу».
-            let cx = cur % W
-            let cy = cur / W
-            var bestIdx: Int? = nil
-            var bestH: Float = world.height[cur]
-
-            for (dx, dy) in [(-1,0),(1,0),(0,-1),(0,1)] {
-                let nx = cx + dx
-                let ny = cy + dy
-                guard nx >= 0, nx < W, ny >= 0, ny < H else { continue }
-                // Ограничение меандра
-                guard abs(nx - startX) <= maxRiverHalfWidth else { continue }
-                let nIdx = ny * W + nx
-                if world.height[nIdx] < bestH {
-                    bestH = world.height[nIdx]
-                    bestIdx = nIdx
-                }
-            }
-
-            if let next = bestIdx {
-                cur = next
-            } else {
-                // Плато или локальный минимум без выхода в море (или вышли за maxRiverHalfWidth)
-                break
-            }
-        }
     }
 
     // MARK: - Шаг 5: validateDiversity

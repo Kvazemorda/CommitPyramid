@@ -96,34 +96,6 @@ final class BiomeClassifierTests: XCTestCase {
         _ = puddleIdx
     }
 
-    // MARK: - Реки линейные (AC3)
-
-    func testRiversHaveReasonableWidth() throws {
-        let world = makeWorld(seed: 42)
-        let map = try BiomeClassifier.classify(world: world)
-
-        let riverComponents = connectedComponents(in: map, biome: .river)
-        guard !riverComponents.isEmpty else {
-            // Реки могут отсутствовать на некоторых seed — это нормально, но зафиксируем
-            XCTFail("На карте seed=42 ожидаются реки, но их нет")
-            return
-        }
-
-        // Средняя ширина компоненты — оцениваем как sqrt(area) / aspect ratio
-        // Простая эвристика: для каждой компоненты считаем bounding box
-        for component in riverComponents {
-            if component.count < 3 { continue }  // пропускаем крошечные
-            let xs = component.map { $0 % map.width }
-            let ys = component.map { $0 / map.width }
-            let bboxW = (xs.max() ?? 0) - (xs.min() ?? 0) + 1
-            let bboxH = (ys.max() ?? 0) - (ys.min() ?? 0) + 1
-            let shortSide = min(bboxW, bboxH)
-            // Ширина реки должна быть в диапазоне 1–8 клеток (допуск чуть шире spec'а 2–6)
-            XCTAssertLessThanOrEqual(shortSide, 8,
-                "Компонента .river слишком широкая: \(shortSide) клеток (bbox: \(bboxW)×\(bboxH))")
-        }
-    }
-
     // MARK: - Граничные клетки (Edge Case)
 
     func testOutOfBoundsReturnsMeadow() throws {
