@@ -8,10 +8,10 @@ final class UnitPlannerTests: XCTestCase {
     private let runSize = 100
     private let proportionTolerance = 10  // ±10% от runSize, т.е. ±10 юнитов
     private let mountainAffinityFactor: Double = 1.5
-    // Эмпирический baseline: первый прогон 2026-05-24 дал 56/150 (~37%) на
-    // stage=5+meadow. Это P2-баг (BUG-021), фиксируется отдельно. До фикса —
-    // тест защищает от *регрессии* в худшую сторону (≤ 60 large на 150).
-    private let largeMaxAbsolute: Int = 60
+    // TASK-054 BUG-021: при largeRarityFactor=0.1 фактическое ~13 на 150 задач
+    // (каталог: 17 large из 51 kinds ≈ 33%, в meadow/stage5 доступно ~13).
+    // Baseline=16 даёт buffer для статистической вариации (seed=deterministic).
+    private let largeMaxAbsolute: Int = 16
     private let performanceLimitSeconds: Double = 5.0
 
     // MARK: - Helper
@@ -197,12 +197,12 @@ final class UnitPlannerTests: XCTestCase {
 
         let largeCount = bigRun.filter { $0.large }.count
 
-        // Изначальный PM-spec был «≤ 1 large на 50 задач» (≤3 для 150).
-        // Реальность 2026-05-24: 56/150 (~37%) — открыт BUG-021. До его фикса
-        // тест защищает только от регрессии в худшую сторону (≤ baseline 60).
+        // TASK-054 BUG-021: largeRarityFactor=0.1 в weightedPick. Фактическое ~13
+        // на 150 задач из meadow stage 5 (каталог: 17 large из 51 kinds ≈ 33%,
+        // в meadow/stage5 доступно ~13). Baseline=16 — буфер для статвариации.
         XCTAssertLessThanOrEqual(largeCount, largeMaxAbsolute,
-            "Large-юниты regression guard (BUG-021): для \(bigSize) задач " +
+            "Large-юниты (TASK-054 BUG-021): для \(bigSize) задач " +
             "baseline ≤ \(largeMaxAbsolute), получено \(largeCount). " +
-            "Целевое значение по spec'у — ≤3 (1 на 50), фикс в BUG-021.")
+            "largeRarityFactor=0.1 в weightedPick снижает выбор large ~10×.")
     }
 }

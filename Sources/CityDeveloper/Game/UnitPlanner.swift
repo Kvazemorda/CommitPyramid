@@ -36,6 +36,18 @@ struct UnitPlanner {
     private static let baseUniform:   Double = 0.15
     private static let terrainBoost:  Double = 0.85
 
+    // MARK: - TASK-054 BUG-021: Large rarity factor
+    /// TASK-054 BUG-021: множитель редкости для large-юнитов (флаг kind.large
+    /// в каталоге) в weightedPick. Эволюционный канал (EvolutionGraph) не задействован.
+    private static let largeRarityFactor: Double = 0.1
+
+    /// TASK-054: критерий large — явный флаг kind.large в каталоге (не size).
+    /// Намеренно: 16 kinds имеют size>=2×2 но large=false (farmhouse, market,
+    /// mill) — для них планировщик НЕ применяет множитель.
+    private static func isLarge(_ kind: UnitKind) -> Bool {
+        return kind.large
+    }
+
     // MARK: - Кэш юнитов по категории (один раз, static lazy)
     // O(50) фильтрация вынесена из hot path.
     private static let unitsByCategory: [UnitCategory: [UnitKind]] = {
@@ -178,7 +190,7 @@ struct UnitPlanner {
         if candidates.count == 1 { return candidates[0] }
 
         // Вычислить веса.
-        let weights: [Double]
+        var weights: [Double]
         if let biome = biome {
             weights = candidates.map { kind in
                 let tw = TerrainAffinity.weight(for: kind, in: biome)
@@ -187,6 +199,14 @@ struct UnitPlanner {
         } else {
             // biome == nil → uniform (back-compat F-07: w = 1.0 для всех)
             weights = Array(repeating: 1.0, count: candidates.count)
+        }
+
+        // TASK-054 BUG-021: large-юниты редкие — множитель применяется ПОСЛЕ
+        // biome-аффинитета, чтобы не ломать пропорции категорий.
+        for i in 0..<candidates.count {
+            if Self.isLarge(candidates[i]) {
+                weights[i] *= Self.largeRarityFactor
+            }
         }
 
         let sum = weights.reduce(0, +)

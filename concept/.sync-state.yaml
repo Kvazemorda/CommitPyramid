@@ -1,31 +1,31 @@
 core_collapse_threshold: 3
-last_sync_date: "2026-05-24"
-last_sync_commit: "2f8a7db"
+last_sync_date: "2026-05-25"
+last_sync_commit: "6fb3abd"
 last_report_date: "2026-05-24"
 last_report_ref: "2f8a7db"
 feature_stability:
-  F-01: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-02: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-03: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
-  F-04: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
-  F-05: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-06: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-07: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-08: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-09: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-10: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-11: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-12: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-13: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-14: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
-  F-15: { status: "✅", consecutive_ok: 1, collapse_skipped: false }  # TASK-030a/030b/030c закрыли реинициализацию + biome-aware allocation; followup на replay-aware preferred — отдельная задача
-  F-16: { status: "⚠️", consecutive_ok: 1, collapse_skipped: false }  # тесты добавлены, остаток TASK-040 blocked F-21
-  F-17: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-18: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-19: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-20: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-21: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
-  F-22: { status: "❌", consecutive_ok: 0, collapse_skipped: false }
-  F-23: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-24: { status: "✅", consecutive_ok: 1, collapse_skipped: false }
-  F-25: { status: "✅", consecutive_ok: 1, collapse_skipped: false }  # 7/7: TASK-051 закрыт (Settings UI + AppDelegate wire + biome-mapping); egyptian-only первая итерация; Roman/Greek follow-up Backlog
+  F-01: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-02: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-03: { status: "✅", consecutive_ok: 4, collapse_skipped: false }
+  F-04: { status: "✅", consecutive_ok: 4, collapse_skipped: false }
+  F-05: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-06: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-07: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-08: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-09: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-10: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-11: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-12: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-13: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-14: { status: "✅", consecutive_ok: 3, collapse_skipped: false }
+  F-15: { status: "✅", consecutive_ok: 2, collapse_skipped: false }  # TASK-030a/030b/030c закрыли реинициализацию + biome-aware allocation; followup на replay-aware preferred → Backlog
+  F-16: { status: "✅", consecutive_ok: 1, collapse_skipped: false }  # reconciliation 2026-05-25: ⚠️→✅ (TASK-040 = docs/asset-prompts.md, 67KB готов вместе с F-21 docs/)
+  F-17: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-18: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-19: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-20: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-21: { status: "✅", consecutive_ok: 1, collapse_skipped: false }  # reconciliation 2026-05-25: ❌→✅ (MIT LICENSE + docs/ EN + CONTRIBUTING* — закрыто 2026-05-23, sync-state отставал)
+  F-22: { status: "✅", consecutive_ok: 1, collapse_skipped: false }  # reconciliation 2026-05-25: ❌→✅ (NotesWatcher.scanAppleNotesFolder + NotesWatcherSection.pickAppleNotesFolder + .appleNoteFolder kind в NotesSourceSpec; AppleScript tell "Notes")
+  F-23: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-24: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
+  F-25: { status: "✅", consecutive_ok: 2, collapse_skipped: false }
