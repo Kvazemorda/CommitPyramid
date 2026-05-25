@@ -39,17 +39,23 @@ final class MapReinitCoordinatorTests: XCTestCase {
     // MARK: - Tests
 
     /// AC: reinit меняет seed в провайдере и сохраняет его в WorldSeedStore.
+    /// TASK-057: actualSeed может быть `requested + k` (k ∈ 0..4) если retry
+    /// сработал на bad-seed. Проверяем range, а не точное равенство.
     func testReinitChangesSeedAndPersists() async throws {
         let dir = makeTempDir()
         let stack = makeStack(at: dir)
         let targetSeedRaw: UInt64 = 42
+        let requested = Int64(bitPattern: targetSeedRaw)
         try await stack.coord.reinit(newSeed: targetSeedRaw)
-        // provider.seed — Int64(bitPattern: UInt64).
-        XCTAssertEqual(stack.provider.seed, Int64(bitPattern: targetSeedRaw))
-        // worldmap.json существует и парсится.
+        let actual = stack.provider.seed
+        XCTAssertTrue(
+            actual >= requested && actual <= (requested &+ Int64(WorldMapProvider.maxRetryAttempts - 1)),
+            "actual seed \(actual) must be within retry window [\(requested), \(requested + Int64(WorldMapProvider.maxRetryAttempts - 1))]"
+        )
+        // worldmap.json существует и парсится; seed в файле = фактически использованный.
         let loaded = WorldMapStore(url: dir.appendingPathComponent("worldmap.json")).load()
         XCTAssertNotNil(loaded, "worldmap.json must exist after reinit")
-        XCTAssertEqual(loaded?.seed, Int64(bitPattern: targetSeedRaw))
+        XCTAssertEqual(loaded?.seed, actual, "worldmap.json seed must equal actual (post-retry)")
     }
 
     /// AC: state.json удаляется при reinit; events.jsonl нетронут → replay

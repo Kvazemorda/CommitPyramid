@@ -103,8 +103,10 @@ final class MapReinitCoordinator {
         }
 
         // c. Regenerate worldmap (атомарно через WorldMapStore.save).
+        // TASK-057: regenerate возвращает RegenerateOutcome с requested/actual
+        // (после retry на bad-seed). actualSeed может отличаться от requested на 1..4.
         let signedSeed: Int64? = newSeed.map { Int64(bitPattern: $0) }
-        _ = worldMapProvider.regenerate(newSeed: signedSeed)
+        let regenerateOutcome = worldMapProvider.regenerate(newSeed: signedSeed)
 
         // Verify: worldmap.json физически на диске.
         // WorldMapStore.save может вернуть false при ошибке записи — провайдер
@@ -161,12 +163,19 @@ final class MapReinitCoordinator {
         }
 
         // i. Persist new seed в AppSettings (TASK-030a уже выкатил поле).
+        // TASK-057: пишем и requested, и actual — UI отобразит «requested → actual»
+        // при несовпадении (см. SettingsView.MapWorldSection).
         if let settings = appSettings {
-            settings.mapSeed = UInt64(bitPattern: worldMapProvider.seed)
+            settings.requestedMapSeed = UInt64(bitPattern: regenerateOutcome.requestedSeed)
+            settings.mapSeed = UInt64(bitPattern: regenerateOutcome.actualSeed)
             settings.save()
         }
 
-        ErrorsLog.write("[map-reinit] completed seed=\(worldMapProvider.seed)")
+        ErrorsLog.write(
+            "[map-reinit] completed requested=\(regenerateOutcome.requestedSeed) "
+            + "actual=\(regenerateOutcome.actualSeed) attempts=\(regenerateOutcome.attempts) "
+            + "balanced=\(regenerateOutcome.finalBalanced)"
+        )
     }
 
     // MARK: - Rollback

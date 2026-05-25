@@ -305,10 +305,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         decayEngine.cityEngine = engine
 
         // 6. Rebuild world map with the new seed (file deleted → provider regenerates).
+        // TASK-057: init теперь сам делает retry до 5 попыток на bad-seed;
+        // фактически использованный seed читаем из provider.seed (может отличаться
+        // от newSeed на 1..4). UI requested→actual обновляется ниже.
         worldMapProvider = WorldMapProvider(
             seedStore: WorldSeedStore.self,
             mapStore: WorldMapStore(url: dataDir.appendingPathComponent("worldmap.json"))
         )
+        appSettings.requestedMapSeed = UInt64(bitPattern: newSeed)
+        appSettings.mapSeed = UInt64(bitPattern: worldMapProvider.seed)
+        appSettings.save()
+
+        // 6.1 Re-wire mapReinitCoordinator на пересозданный провайдер, иначе
+        // следующий reinit будет бить по старому (уже отвязанному) провайдеру.
+        mapReinitCoordinator.worldMapProvider = worldMapProvider
 
         // 7. Reconnect engine callbacks (same closures as in applicationDidFinishLaunching).
         engine.onUnitBuilt = { [weak self] unit, project in

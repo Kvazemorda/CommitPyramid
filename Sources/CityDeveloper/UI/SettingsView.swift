@@ -349,8 +349,16 @@ private struct MapWorldSection: View {
     var body: some View {
         GroupBox(label: Label("Карта мира", systemImage: "map")) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Текущий seed: \(settings.mapSeed)")
-                    .font(.system(.body, design: .monospaced))
+                // TASK-057: при retry на bad-seed actualSeed может отличаться
+                // от requested на 1..4 — показываем оба значения для багрепортов.
+                if settings.requestedMapSeed != 0
+                    && settings.requestedMapSeed != settings.mapSeed {
+                    Text("Seed: requested \(settings.requestedMapSeed) → actual \(settings.mapSeed)")
+                        .font(.system(.body, design: .monospaced))
+                } else {
+                    Text("Текущий seed: \(settings.mapSeed)")
+                        .font(.system(.body, design: .monospaced))
+                }
                 HStack {
                     TextField("Новый seed (пусто = случайный)", text: $newSeedText)
                         .textFieldStyle(.roundedBorder)

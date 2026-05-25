@@ -25,6 +25,28 @@ enum BiomeClassifierError: Error {
     case insufficientDiversity(found: Int, dominantShare: Double)
 }
 
+// MARK: - ClassificationOutcome
+
+/// TASK-057 F-15: метаданные классификации, возвращаемые `classify(world:strict:)`.
+/// Используется WorldMapProvider для retry-логики на «несбалансированных» seed'ах.
+struct ClassificationOutcome {
+    /// Сама биомная карта.
+    let map: BiomeMap
+    /// Распределение биомов: `BiomeKind → count` (только присутствующие).
+    let distribution: [BiomeKind: Int]
+    /// Общее число клеток (= width × height).
+    let total: Int
+    /// Максимальная доля одного биома (0…1).
+    let dominantShare: Double
+    /// Число неводных биомов из {meadow, desert, forest, mountain, stone},
+    /// у которых доля ≥ `BiomeClassifier.minBiomeShare`.
+    let nonWaterAboveThreshold: Int
+    /// `≥1 клетка` sea присутствует (информационно, НЕ влияет на `balanced`).
+    let seaPresent: Bool
+    /// `dominantShare ≤ maxDominantShare && nonWaterAboveThreshold ≥ minDiversity`.
+    let balanced: Bool
+}
+
 // MARK: - BiomeClassifier
 
 /// Детерминированный классификатор: NoiseMap → BiomeMap.
@@ -36,8 +58,10 @@ struct BiomeClassifier {
     /// Минимальная связная площадь моря (клеток). Меньше — «лужа», сглаживается.
     static let minSeaArea: Int = 8
 
-    /// Минимальное число различных биомов (AC1). Реки отключены — достаточно 6.
-    static let minDiversity: Int = 6
+    /// Минимальное число неводных биомов из {meadow, desert, forest, mountain, stone}
+    /// с долей ≥ `minBiomeShare`. TASK-057: снижено с 6 до 4 (5 неводных минус
+    /// 1 допустимый «провал», например stone в жарких seed'ах).
+    static let minDiversity: Int = 4
 
     /// Максимальная доля доминирующего биома. Море теперь — компактный блоб (<5% карты),
     /// доминировать будут луга/леса. 0.55 запаса достаточно для типичного шум-сида.
@@ -61,11 +85,20 @@ struct BiomeClassifier {
 
     // MARK: - Публичный API
 
-    /// Классифицирует NoiseMap в BiomeMap.
+    /// Классифицирует NoiseMap в BiomeMap (strict-режим, back-compat обёртка).
     /// - Throws: `BiomeClassifierError.sizeMismatch` если поля NoiseMap не согласованы.
-    ///           `BiomeClassifierError.insufficientDiversity` если < 4 биомов или доля
-    ///            доминирующего > 75%.
+    ///           `BiomeClassifierError.insufficientDiversity` если набор биомов
+    ///            не сбалансирован (см. `ClassificationOutcome.balanced`).
     static func classify(world: NoiseMap) throws -> BiomeMap {
+        try classify(world: world, strict: true).map
+    }
+
+    /// TASK-057 F-15: классифицирует NoiseMap, возвращает полную метадату.
+    /// - Parameter strict: при `true` бросает `insufficientDiversity` если не balanced;
+    ///   при `false` — никогда не бросает `insufficientDiversity` (но пишет WARN
+    ///   в `ErrorsLog` и возвращает outcome с `balanced=false`).
+    ///   `sizeMismatch` бросается всегда — это сломанные входные данные.
+    static func classify(world: NoiseMap, strict: Bool) throws -> ClassificationOutcome {
         let n = world.size * world.size
         guard world.height.count == n,
               world.temperature.count == n,
@@ -85,10 +118,37 @@ struct BiomeClassifier {
         // 3. Разметить море flood-fill + сгладить «лужи»
         markSea(cells: &cells, W: W, H: H, seaThreshold: thresholds.seaLevel, world: world)
 
-        // 5. Проверить разнообразие
-        try validateDiversity(cells: cells, total: W * H)
+        // 4. Подсчёт распределения и формирование outcome.
+        let total = W * H
+        var distribution: [BiomeKind: Int] = [:]
+        for b in cells { distribution[b, default: 0] += 1 }
+        let dominantCount = distribution.values.max() ?? 0
+        let dominantShare = Double(dominantCount) / Double(total)
 
-        return BiomeMap(width: W, height: H, cells: cells)
+        let nonWaterKinds: [BiomeKind] = [.meadow, .desert, .forest, .mountain, .stone]
+        let nonWaterAboveThreshold = nonWaterKinds.reduce(into: 0) { acc, kind in
+            let share = Double(distribution[kind] ?? 0) / Double(total)
+            if share >= minBiomeShare { acc += 1 }
+        }
+
+        let seaPresent = (distribution[.sea] ?? 0) > 0
+        let balanced = dominantShare <= maxDominantShare
+            && nonWaterAboveThreshold >= minDiversity
+
+        let outcome = ClassificationOutcome(
+            map: BiomeMap(width: W, height: H, cells: cells),
+            distribution: distribution,
+            total: total,
+            dominantShare: dominantShare,
+            nonWaterAboveThreshold: nonWaterAboveThreshold,
+            seaPresent: seaPresent,
+            balanced: balanced
+        )
+
+        // 5. Проверить разнообразие (логи + опциональный throw).
+        try validateDiversity(outcome: outcome, strict: strict)
+
+        return outcome
     }
 
     // MARK: - Внутренние структуры
@@ -297,18 +357,16 @@ struct BiomeClassifier {
 
     // MARK: - Шаг 5: validateDiversity
 
-    /// BUG-008: проверяет разнообразие биомов. Бросает ошибку если:
-    ///   - уникальных биомов < minDiversity (7),
-    ///   - или доминирующий биом занимает > maxDominantShare (40%).
-    /// Дополнительно логирует предупреждение если любой биом < minBiomeShare (5%).
-    private static func validateDiversity(cells: [BiomeKind], total: Int) throws {
-        var counts: [BiomeKind: Int] = [:]
-        for b in cells { counts[b, default: 0] += 1 }
+    /// TASK-057 F-15: логирует распределение и опционально бросает throw.
+    /// - `strict == true`: при `!outcome.balanced` бросает `insufficientDiversity`.
+    /// - `strict == false`: всегда возвращает (но пишет WARN). Используется
+    ///    WorldMapProvider в retry-цикле.
+    private static func validateDiversity(outcome: ClassificationOutcome, strict: Bool) throws {
+        let counts = outcome.distribution
+        let total = outcome.total
         let unique = counts.count
-        let dominantCount = counts.values.max() ?? 0
-        let dominantShare = Double(dominantCount) / Double(total)
 
-        // Логируем распределение для диагностики (аналогично BUG-006 BiomeDistribution)
+        // Логируем распределение для диагностики (аналогично BUG-006 BiomeDistribution).
         let distributionStr = BiomeKind.allCases.compactMap { kind -> String? in
             guard let c = counts[kind] else { return nil }
             let pct = Double(c) / Double(total) * 100.0
@@ -316,7 +374,7 @@ struct BiomeClassifier {
         }.joined(separator: " ")
         ErrorsLog.write("BiomeClassifier distribution [\(unique) kinds]: \(distributionStr)")
 
-        // Предупреждение если любой из 7 биомов < 5% (BUG-008 цель)
+        // Предупреждение если любой из 7 биомов < 5% (BUG-008 цель).
         for kind in BiomeKind.allCases {
             let share = Double(counts[kind] ?? 0) / Double(total)
             if share < minBiomeShare {
@@ -324,8 +382,20 @@ struct BiomeClassifier {
             }
         }
 
-        if unique < minDiversity || dominantShare > maxDominantShare {
-            throw BiomeClassifierError.insufficientDiversity(found: unique, dominantShare: dominantShare)
+        // Диагностический WARN если sea-блоб полностью «съеден» как лужа.
+        // Не блокирует balanced — markSea центр-зафиксирован, retry бессмыслен.
+        if !outcome.seaPresent {
+            ErrorsLog.write("BiomeClassifier: sea blob absent (markSea removed all sea cells as < minSeaArea)")
+        }
+
+        if !outcome.balanced {
+            ErrorsLog.write("BiomeClassifier WARNING: distribution NOT balanced (dominant=\(String(format: "%.1f", outcome.dominantShare * 100))%, nonWater≥5%: \(outcome.nonWaterAboveThreshold)/\(minDiversity))")
+            if strict {
+                throw BiomeClassifierError.insufficientDiversity(
+                    found: outcome.nonWaterAboveThreshold,
+                    dominantShare: outcome.dominantShare
+                )
+            }
         }
     }
 }

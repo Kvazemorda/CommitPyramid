@@ -41,7 +41,14 @@ final class AppSettings: ObservableObject {
     @Published var templateFamily: String = "auto"
     @Published var previewTemplateSilhouette: Bool = false
     /// TASK-030a F-15: seed карты мира. 0 = «случайный при первом старте/reinit».
+    /// TASK-057: фактически использованный seed (после retry); может отличаться
+    /// от `requestedMapSeed` на 1..4 если первая попытка дала несбалансированную карту.
     @Published var mapSeed: UInt64 = 0
+    /// TASK-057 F-15: запрошенный пользователем seed для последнего reset/reinit.
+    /// Эфемерное поле — НЕ персистится в UserDefaults, при старте всегда `0`.
+    /// UI показывает «requested → actual» только при
+    /// `requestedMapSeed != 0 && requestedMapSeed != mapSeed`.
+    @Published var requestedMapSeed: UInt64 = 0
 
     private static let key = "com.commitpyramid.app.settings"
     private static let legacyKey = "com.outbyte.citydeveloper.settings"

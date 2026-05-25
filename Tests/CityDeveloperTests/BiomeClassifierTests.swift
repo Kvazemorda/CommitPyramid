@@ -32,13 +32,19 @@ final class BiomeClassifierTests: XCTestCase {
 
     // MARK: - Разнообразие (AC1)
 
+    /// TASK-057: проверяем нового семантику — ≥ minDiversity неводных биомов
+    /// из {meadow, desert, forest, mountain, stone}, у которых доля ≥ 5%.
+    /// Используем strict=false, чтобы получить outcome даже если первый seed
+    /// дал несбалансированную карту (баланс обеспечивает WorldMapProvider retry).
     func testMinimumBiomeDiversity() throws {
         let world = makeWorld(seed: 42)
-        let map = try BiomeClassifier.classify(world: world)
+        let outcome = try BiomeClassifier.classify(world: world, strict: false)
 
-        let unique = Set(map.cells).count
-        XCTAssertGreaterThanOrEqual(unique, BiomeClassifier.minDiversity,
-                                    "На карте должно быть ≥ \(BiomeClassifier.minDiversity) разных биомов, нашли: \(unique)")
+        XCTAssertGreaterThanOrEqual(
+            outcome.nonWaterAboveThreshold, BiomeClassifier.minDiversity,
+            "На карте должно быть ≥ \(BiomeClassifier.minDiversity) неводных биомов с долей ≥ 5%, нашли: \(outcome.nonWaterAboveThreshold)"
+        )
+        XCTAssertTrue(outcome.seaPresent, "Sea-блоб должен присутствовать (≥1 клетка)")
     }
 
     func testDominantBiomeDoesNotExceedThreshold() throws {
