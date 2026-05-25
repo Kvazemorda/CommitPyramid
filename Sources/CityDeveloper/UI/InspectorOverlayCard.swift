@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// SwiftUI-overlay карточки инспектора в screen-fixed позиции.
-/// Не путать с SpriteKit-попапом `InspectorPanel` — он живёт в world-coords
-/// и остаётся как-есть. Эта карточка — отдельный визуальный слой поверх
-/// `SpriteView`, прижатый к правой стороне по вертикальному центру окна.
+/// Единственный визуальный слой инспектора (legacy SpriteKit-версия удалена).
+/// Прижата к правой стороне по вертикальному центру окна.
 ///
 /// Источник истины — `SceneBridge.selectedUnitInfo`, обновляется в
 /// `GameScene.showInspector(forUnitId:)` и `hideInspector()`.

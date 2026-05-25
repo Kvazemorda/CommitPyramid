@@ -31,7 +31,6 @@ final class GameScene: SKScene {
     // MARK: - Debug overlay (TASK-025)
     private var debugOverlayEnabled: Bool = false
 
-    private var inspector: SKNode?
     private static let unitIdKey = "unitId"
     /// Ключ userData для хранения projectId ноды юнита.
     /// Используется в handleRuinsCleared для быстрого поиска нод старого проекта.
@@ -187,7 +186,6 @@ final class GameScene: SKScene {
         world.removeAllChildren()
         unitNodes.removeAll()
         districtNodes.removeAll()
-        inspector = nil
 
         // F-21: сбрасываем дорожную сеть и её ноды.
         roadNetwork.reset()
@@ -975,7 +973,6 @@ final class GameScene: SKScene {
         for node in hits {
             var current: SKNode? = node
             while let n = current {
-                if n === inspector { return }
                 if let uid = n.userData?[Self.unitIdKey] as? UUID,
                    let unit = engine?.state.units[uid.uuidString],
                    let project = engine?.state.projects[unit.projectId] {
@@ -1027,21 +1024,10 @@ final class GameScene: SKScene {
 
     func showInspector(near anchor: CGPoint, unit: UnitState, project: ProjectState) {
         hideInspector()
-        // BUG-001: SpriteKit InspectorPanel отключён — используем SwiftUI InspectorOverlayCard.
-        // let panel = InspectorPanel.build(unit: unit, project: project)
-        // let unitNode = unitNodes[unit.id]
-        // let anchorWorld = unitNode?.position ?? anchor
-        // panel.position = CGPoint(x: anchorWorld.x + 80, y: anchorWorld.y + 40)
-        // panel.zPosition = 100000
-        // world.addChild(panel)
-        // inspector = panel
         bridge?.selectedUnitInfo = (unit, project)
     }
 
     private func hideInspector() {
-        // BUG-001: SpriteKit InspectorPanel отключён; inspector всегда nil.
-        // inspector?.removeFromParent()
-        // inspector = nil
         bridge?.selectedUnitInfo = nil
     }
 
