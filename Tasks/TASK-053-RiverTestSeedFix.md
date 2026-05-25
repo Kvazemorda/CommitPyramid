@@ -291,4 +291,4 @@ seed'е, а в том, что `BiomeClassifier.carveRivers(...)` был наме
 - Завершена: 2026-05-25
 - Исполнитель: opus (главная сессия после эскалации haiku-executor'а; pivot решения согласован с Ильёй)
 - Code-review: skipped (cleanup мёртвого кода без логических изменений; verify covered)
-- Коммит: —
+- Коммит: e63c8bc
