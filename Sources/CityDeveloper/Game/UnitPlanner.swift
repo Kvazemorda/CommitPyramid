@@ -307,7 +307,8 @@ struct UnitPlanner {
         unitSize: GridSize = GridSize(width: 1, height: 1),
         template: DistrictTemplate? = nil,
         kind: UnitKind? = nil,
-        projectEraLevel: Int
+        projectEraLevel: Int,
+        otherProjectCells: Set<GridPoint> = []
     ) -> GridPoint? {
         // TASK-048c F-25: slot-based placement for templated districts.
         if let t = template, let k = kind {
@@ -317,6 +318,8 @@ struct UnitPlanner {
                 .sorted { ($0.y, $0.x) < ($1.y, $1.x) }
             for slot in sorted {
                 // Check occupancy: intersection of slot footprint with builtCells.
+                // TASK-056 BUG-022: также пропускаем слот, если он пересекается с
+                // клеткой другого проекта (hard-block для cross-project overlap).
                 var occupied = false
                 outer: for dx in 0..<slot.footprint.width {
                     for dy in 0..<slot.footprint.height {
@@ -324,6 +327,7 @@ struct UnitPlanner {
                             x: origin.x + slot.x + dx,
                             y: origin.y + slot.y + dy)
                         if builtCells.contains(cell) { occupied = true; break outer }
+                        if otherProjectCells.contains(cell) { occupied = true; break outer }
                     }
                 }
                 if !occupied {
@@ -336,6 +340,10 @@ struct UnitPlanner {
         let i = max(0, buildingIndex)
 
         // Fallback: legacy-кольцо вокруг origin (если карты дорог нет).
+        // TASK-056: legacyRingPosition не учитывает otherProjectCells (детерминированная
+        // формула без поиска). Используется только при roadCells.isEmpty (самый ранний
+        // юнит проекта в pre-mainRoad сценарии) — в этой ситуации otherProjectCells
+        // также пуст (никакой другой проект ещё не разместил юнит без дорог).
         if roadCells.isEmpty {
             return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
         }
@@ -378,22 +386,22 @@ struct UnitPlanner {
             // anchor снизу: pos.y = anchor.y + 1, pos.x варьируем
             for dx in 0..<W {
                 let pos = GridPoint(x: anchor.x - dx, y: anchor.y + 1)
-                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells, otherProjectCells: otherProjectCells) }
             }
             // anchor сверху: pos.y = anchor.y - H, pos.x варьируем
             for dx in 0..<W {
                 let pos = GridPoint(x: anchor.x - dx, y: anchor.y - H)
-                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells, otherProjectCells: otherProjectCells) }
             }
             // anchor слева: pos.x = anchor.x + 1, pos.y варьируем
             for dy in 0..<H {
                 let pos = GridPoint(x: anchor.x + 1, y: anchor.y - dy)
-                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells, otherProjectCells: otherProjectCells) }
             }
             // anchor справа: pos.x = anchor.x - W, pos.y варьируем
             for dy in 0..<H {
                 let pos = GridPoint(x: anchor.x - W, y: anchor.y - dy)
-                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells) }
+                if seen.insert(pos).inserted { append(&candidates, pos, size: unitSize, roads: roadCells, built: builtCells, otherProjectCells: otherProjectCells) }
             }
         }
 
@@ -405,11 +413,13 @@ struct UnitPlanner {
     }
 
     /// Добавляет position в candidates, если footprint не блокирован (overlap с
-    /// дорогой/застройкой) И касается дороги хотя бы одной стороной. Inline helper
-    /// для уменьшения дублирования в nextPosition.
+    /// дорогой/застройкой/чужим проектом) И касается дороги хотя бы одной стороной.
+    /// Inline helper для уменьшения дублирования в nextPosition.
     private func append(_ candidates: inout [GridPoint], _ pos: GridPoint,
-                        size: GridSize, roads: Set<GridPoint>, built: Set<GridPoint>) {
-        if footprintBlocked(at: pos, size: size, roads: roads, built: built) { return }
+                        size: GridSize, roads: Set<GridPoint>, built: Set<GridPoint>,
+                        otherProjectCells: Set<GridPoint> = []) {
+        if footprintBlocked(at: pos, size: size, roads: roads, built: built,
+                            otherProjectCells: otherProjectCells) { return }
         if !footprintAdjacentToRoad(at: pos, size: size, roads: roads) { return }
         candidates.append(pos)
     }
@@ -446,15 +456,18 @@ struct UnitPlanner {
         }
     }
 
-    /// Проверяет, заблокирован ли footprint W×H — перекрывается с дорогой или занятым зданием.
+    /// Проверяет, заблокирован ли footprint W×H — перекрывается с дорогой, занятым
+    /// зданием или клеткой другого проекта (TASK-056 BUG-022).
     private func footprintBlocked(
         at pos: GridPoint, size: GridSize,
-        roads: Set<GridPoint>, built: Set<GridPoint>
+        roads: Set<GridPoint>, built: Set<GridPoint>,
+        otherProjectCells: Set<GridPoint> = []
     ) -> Bool {
         for dx in 0..<size.width {
             for dy in 0..<size.height {
                 let p = GridPoint(x: pos.x + dx, y: pos.y + dy)
                 if roads.contains(p) || built.contains(p) { return true }
+                if otherProjectCells.contains(p) { return true }
             }
         }
         return false

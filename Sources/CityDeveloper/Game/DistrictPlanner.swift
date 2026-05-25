@@ -50,7 +50,9 @@ struct DistrictPlanner {
     func allocateNextOrigin(
         currentIndex: Int,
         biomeReader: BiomeMapReader?,
-        preferredBiomes: [BiomeKind] = []
+        preferredBiomes: [BiomeKind] = [],
+        otherProjectsClaims: Set<GridPoint> = [],
+        minDistrictRadius: Int = 8
     ) -> (origin: GridPoint, newIndex: Int) {
         guard let reader = biomeReader else {
             // Нет карты биомов — старое поведение (back-compat до TASK-026).
@@ -67,28 +69,51 @@ struct DistrictPlanner {
             origin = spiralPoint(index: idx)
         }
 
+        // TASK-056 BUG-022: пропускаем origin'ы в Чебышёвской окрестности
+        // minDistrictRadius от любой клетки другого проекта.
+        // Порядок (water-skip → cross-project-skip → preferred-biome-scan):
+        // water — hard-block, cross-project — hard-block, preferred-biome — soft.
+        while idx < maxAttempts {
+            let tooClose = otherProjectsClaims.contains { cell in
+                max(abs(cell.x - origin.x), abs(cell.y - origin.y)) < minDistrictRadius
+            }
+            if !tooClose { break }
+            idx += 1
+            origin = spiralPoint(index: idx)
+            // Повторная проверка water-skip после bump'а cross-project skip.
+            while reader.biome(atX: origin.x, y: origin.y).isWater && idx < maxAttempts {
+                idx += 1
+                origin = spiralPoint(index: idx)
+            }
+        }
+
         // TASK-030c F-15: biome-aware preference filter.
-        // Если задан список предпочтительных биомов — сканируем первые 20 кандидатов
-        // начиная с currentIndex, ищем первую не-водную клетку в preferredBiomes.
-        // Если ни одна не подошла — fallback на уже найденный (water-skipped) origin.
+        // TASK-056: scanStart = idx (после water+cross-skip), а не currentIndex.
+        // Намеренно: cross-project — hard-block, preferred-biome — soft-preference;
+        // preferred-скан не должен возвращаться на индексы, которые уже отвергнуты
+        // как water или как лежащие в радиусе чужого квартала.
         if !preferredBiomes.isEmpty {
             let preferredSet = Set(preferredBiomes)
-            let scanLimit = currentIndex + 20
-            var scanIdx = currentIndex
+            let scanStart = idx
+            let scanLimit = scanStart + 20
+            var scanIdx = scanStart
             while scanIdx <= scanLimit {
                 let candidate = spiralPoint(index: scanIdx)
                 let b = reader.biome(atX: candidate.x, y: candidate.y)
-                if !b.isWater && preferredSet.contains(b) {
+                let candidateTooClose = otherProjectsClaims.contains { cell in
+                    max(abs(cell.x - candidate.x), abs(cell.y - candidate.y)) < minDistrictRadius
+                }
+                if !b.isWater && !candidateTooClose && preferredSet.contains(b) {
                     return (candidate, scanIdx)
                 }
                 scanIdx += 1
             }
             // Fallback: ни один из 20 кандидатов не в предпочтительном биоме —
-            // возвращаем уже найденный water-skipped origin.
+            // возвращаем уже найденный water+cross-skipped origin.
         }
 
-        // Если все 10 000 клеток оказались водой — возвращаем последнюю найденную позицию
-        // без дополнительного инкремента (карта целиком водная — edge case).
+        // Если все 10 000 клеток оказались водой/занятыми — возвращаем последнюю
+        // найденную позицию без дополнительного инкремента (edge case backstop).
         return (origin, idx)
     }
 
@@ -105,10 +130,17 @@ struct DistrictPlanner {
     func allocateAlongMagistrale(
         currentIndex: Int,
         mainRoadCells: [GridPoint],
-        biomeReader: BiomeMapReader?
+        biomeReader: BiomeMapReader?,
+        otherProjectsClaims: Set<GridPoint> = [],
+        minDistrictRadius: Int = 8
     ) -> (origin: GridPoint, newIndex: Int) {
         guard !mainRoadCells.isEmpty else {
-            return allocateNextOrigin(currentIndex: currentIndex, biomeReader: biomeReader)
+            return allocateNextOrigin(
+                currentIndex: currentIndex,
+                biomeReader: biomeReader,
+                otherProjectsClaims: otherProjectsClaims,
+                minDistrictRadius: minDistrictRadius
+            )
         }
 
         let mag = mainRoadCells
@@ -146,6 +178,15 @@ struct DistrictPlanner {
             )
 
             if let reader = biomeReader, reader.biome(atX: origin.x, y: origin.y).isWater {
+                idx += 1
+                continue
+            }
+            // TASK-056 BUG-022: hard-block для cross-project overlap.
+            // Чебышёвская окрестность minDistrictRadius от любой чужой клетки.
+            let tooClose = otherProjectsClaims.contains { cell in
+                max(abs(cell.x - origin.x), abs(cell.y - origin.y)) < minDistrictRadius
+            }
+            if tooClose {
                 idx += 1
                 continue
             }

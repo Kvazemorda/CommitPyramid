@@ -318,12 +318,24 @@ final class CityEngine: ObservableObject {
             } else {
                 // Fallback: размещение вдоль магистрали (петли «по очереди» сторонами).
                 // Если магистрали ещё нет — fall-through на спираль (back-compat).
+                //
+                // TASK-056 BUG-022: собираем footprint-клетки всех ДРУГИХ проектов
+                // (включаем все, кроме текущего projectKey) и передаём в planner —
+                // он будет пропускать origin'ы в Чебышёвской окрестности < 8 клеток
+                // от любой чужой клетки.
+                let allClaims = Self.claimedCellsByProjects(in: state)
+                let otherClaims = allClaims
+                    .filter { $0.key != projectKey }
+                    .values
+                    .reduce(into: Set<GridPoint>()) { $0.formUnion($1) }
                 let allocated: (origin: GridPoint, newIndex: Int)
                 if let mag = roadNetwork?.mainRoadCells, !mag.isEmpty {
                     allocated = districtPlanner.allocateAlongMagistrale(
                         currentIndex: state.nextDistrictIndex,
                         mainRoadCells: mag,
-                        biomeReader: biomeReader
+                        biomeReader: biomeReader,
+                        otherProjectsClaims: otherClaims,
+                        minDistrictRadius: 8
                     )
                 } else {
                     // TASK-030c F-15: biome-aware allocation.
@@ -331,7 +343,9 @@ final class CityEngine: ObservableObject {
                     // → preferred = [] → спираль (корректно по спеке: edge case unitIds.count == 0).
                     allocated = districtPlanner.allocateNextOrigin(
                         currentIndex: state.nextDistrictIndex,
-                        biomeReader: biomeReader
+                        biomeReader: biomeReader,
+                        otherProjectsClaims: otherClaims,
+                        minDistrictRadius: 8
                     )
                 }
                 origin = allocated.origin
@@ -437,6 +451,22 @@ final class CityEngine: ObservableObject {
                     }
                     return cells
                 })
+            // TASK-056 BUG-022: footprint-клетки ВСЕХ юнитов других проектов —
+            // hard-block для slot placement и template path.
+            let otherSet = Set(state.units.values
+                .filter { $0.projectId != projectKey }
+                .flatMap { unit -> [GridPoint] in
+                    let s = unit.kind.size
+                    var cells: [GridPoint] = []
+                    for dx in 0..<s.width {
+                        for dy in 0..<s.height {
+                            cells.append(GridPoint(
+                                x: unit.position.x + dx,
+                                y: unit.position.y + dy))
+                        }
+                    }
+                    return cells
+                })
             let planLen = roadNetwork?.plannedCells(for: projectKey).count ?? 0
             let buildingIndex = max(0, project.taskCount - planLen - 1)
             if let slotPos = unitPlanner.nextPosition(
@@ -447,7 +477,8 @@ final class CityEngine: ObservableObject {
                 unitSize: resolvedKind.size,
                 template: template,
                 kind: resolvedKind,
-                projectEraLevel: project.eraLevel
+                projectEraLevel: project.eraLevel,
+                otherProjectCells: otherSet
             ) {
                 kind = resolvedKind
                 placedPos = slotPos
@@ -708,13 +739,29 @@ final class CityEngine: ObservableObject {
                     }
                     return cells
                 })
+            // TASK-056 BUG-022: hard-block для cross-project overlap в legacy path.
+            let otherSet = Set(state.units.values
+                .filter { $0.projectId != projectKey }
+                .flatMap { unit -> [GridPoint] in
+                    let s = unit.kind.size
+                    var cells: [GridPoint] = []
+                    for dx in 0..<s.width {
+                        for dy in 0..<s.height {
+                            cells.append(GridPoint(
+                                x: unit.position.x + dx,
+                                y: unit.position.y + dy))
+                        }
+                    }
+                    return cells
+                })
             foundPos = unitPlanner.nextPosition(
                 origin: project.districtOrigin,
                 buildingIndex: buildingIndex,
                 roadCells: roadNetwork?.allCells ?? [],
                 builtCells: builtSet,
                 unitSize: kind.size,
-                projectEraLevel: project.eraLevel
+                projectEraLevel: project.eraLevel,
+                otherProjectCells: otherSet
             )
             if foundPos == nil {
                 extends += 1
@@ -940,5 +987,30 @@ final class CityEngine: ObservableObject {
                 return lhs.id < rhs.id
             }
             .first
+    }
+}
+
+extension CityEngine {
+    /// TASK-056 BUG-022: собирает footprint-клетки всех юнитов по projectId.
+    /// Возвращает [projectId: Set<GridPoint>] для использования в
+    /// DistrictPlanner.allocateNextOrigin и UnitPlanner.nextPosition.
+    /// O(N) по числу юнитов; вызывается раз на applyTaskCompleted.
+    static func claimedCellsByProjects(
+        in state: CityState
+    ) -> [String: Set<GridPoint>] {
+        var result: [String: Set<GridPoint>] = [:]
+        for unit in state.units.values {
+            let size = unit.kind.size
+            var cells = result[unit.projectId, default: []]
+            for dx in 0..<size.width {
+                for dy in 0..<size.height {
+                    cells.insert(GridPoint(
+                        x: unit.position.x + dx,
+                        y: unit.position.y + dy))
+                }
+            }
+            result[unit.projectId] = cells
+        }
+        return result
     }
 }
