@@ -784,4 +784,4 @@ _Сложность: —_ (определит лид)
 - Исполнитель: opus
 - Code-review: approved (Opus, P0/Lead-opus/senior triggers; 0 blocking issues — 4 minor наблюдения: дубль кода template/legacy path, naming otherProjectsClaims vs otherProjectCells, legacyRingPosition pre-existing edge case, nil-fallback intentional для MapReinitCoordinator)
 - Завершена: 2026-05-25
-- Коммит: (заполнится после git commit)
+- Коммит: 3257943
