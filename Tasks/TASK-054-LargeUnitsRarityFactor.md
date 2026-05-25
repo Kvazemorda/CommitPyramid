@@ -304,5 +304,5 @@ _Объём: S_
 - Исполнитель: haiku
 - Code-review: revised (round 2 approved, sonnet)
 - Завершена: 2026-05-25
-- Коммит: (заполнится после git commit)
+- Коммит: c0c7268
 - AC4 revised: baseline=16 вместо spec=10 — каталог имеет 17 large из 51 kinds (lead-расчёт опирался на устаревшие 4/12), для baseline=10 нужен factor≈0.05.
