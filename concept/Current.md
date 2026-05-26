@@ -1,6 +1,43 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-25 (прогон TASK-057 — биомное распределение, retry-логика для F-15)_
+_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-024 закрыт TASK-058, BUG-025 в работе TASK-059)_
+
+## ⏱ Что сделано за прогон 2026-05-26 (TASK-058 — BUG-024 ruin reoccupation)
+
+**Закрыто:**
+- TASK-058 (BUG-024, P1) — после decay-4 (ruins) клетки/claim проекта не
+  освобождались для нового проекта; cross-project overlap защита TASK-056
+  hard-блокировала «мёртвую зону» руин. Семантически decay-4 = reusable
+  почва, а не активная территория.
+  - `CityEngine.claimedCellsByProjects(in:includeDecayedRuins:)` — опц.
+    параметр `includeDecayedRuins: Bool = true` (back-compat). При `false`
+    юниты проектов с `decayLevel >= 4` и orphan units (без ProjectState)
+    пропускаются.
+  - Единственный production call site с `false` — `CityEngine.swift:326`
+    (fallback ветка `applyTaskCompleted` когда `pickRuinForNewProject`
+    не нашёл кандидата → свежий origin через spiral/magistrale).
+    In-district placement (UnitPlanner.nextPosition) собирает `otherSet`
+    напрямую из `state.units` (CityEngine.swift:743-758) — это hard-block
+    decay-4 footprint'а до выбора ruin'а, оставлен как есть.
+  - 5 property/unit тестов `RuinReoccupationPropertyTests` (AC1, AC2, AC3
+    регресс, AC5 replay, AC6 reborn projectId).
+  - AC4 (приоритет «старейшая/большая руина» при 2+ кандидатах) — minor
+    gap по тесту с 2+ кандидатами, логика сортировки в
+    `pickRuinForNewProject` (CityEngine.swift:980-990) реализована корректно.
+  - Lead-model: opus (P1 + multi-module триггер); Plan-review: approved.
+    Run: sonnet executor + sonnet verify + opus code-review (approved,
+    замечания verbosity/style, не блокирующие). Совместимость с TASK-059
+    подтверждена.
+
+**Результат `swift test`:** 206/206 — все тесты suite зелёные.
+
+**Изменения файлов за TASK-058:**
+- `Sources/CityDeveloper/Game/CityEngine.swift` (расширена сигнатура
+  `claimedCellsByProjects` + call site)
+- `Tests/CityDeveloperTests/RuinReoccupationPropertyTests.swift` (НОВЫЙ, 5 тестов)
+- `concept/Bugs.md` (BUG-024 → Закрытые)
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-25 (TASK-053 — BUG-020 cleanup)
 
@@ -423,7 +460,7 @@ TASK-050 (era progression), TASK-051 (Settings UI).
 | F-03 | Event sourcing (лог + replay)                 | ✅     | `Data/EventLog.swift`, `Data/GameEvent.swift`, `Game/CityEngine.swift` | Подтверждено smoke-тестом                  |
 | F-04 | Watcher `tasks.jsonl` (legacy / частный случай F-18) | ✅     | `Data/TasksJsonlWatcher.swift`, `Data/IngestionState.swift`, `Data/TaskRecord.swift` | DispatchSource, валидация, offset. После F-18 — частный случай (один файл с фиксированным форматом) |
 | F-05 | Лёгкая симуляция жизни квартала               | ✅     | `Game/LifeSimulationManager.swift`, `Game/GameScene.swift` | 11 типов юнитов (кроме road) + smoke/sparks/flags/ripple/silhouettes + pause при behind |
-| F-06 | Project-District и автоматическое размещение  | ✅     | `Game/DistrictPlanner.swift`, `Game/UnitPlanner.swift`, `Game/CityEngine.swift` (`pickRuinForNewProject`, `claimedCellsByProjects`), `Game/GameScene.swift` (`handleRuinsCleared`) | Спираль + приоритет руин (детерминированный выбор по `lastActivityAt → unitIds.count → projectId`); атомарный state-переход; визуальная анимация расчистки 3–5 сек (TASK-017). Cross-project overlap защита (TASK-056 BUG-022): `allocateNextOrigin(otherProjectsClaims:minDistrictRadius:)` пропускает origin'ы в Чебышёвской окрестности чужих claim'ов; `UnitPlanner.nextPosition(otherProjectCells:)` + `footprintBlocked` hard-block чужие клетки. Computed claim-map собирается на лету через `CityEngine.claimedCellsByProjects(in:)` без миграции CityState формата. Property-инвариант: для любых двух юнитов A, B → `A.position != B.position` ИЛИ `A.projectId == B.projectId`. |
+| F-06 | Project-District и автоматическое размещение  | ✅     | `Game/DistrictPlanner.swift`, `Game/UnitPlanner.swift`, `Game/CityEngine.swift` (`pickRuinForNewProject`, `claimedCellsByProjects`), `Game/GameScene.swift` (`handleRuinsCleared`) | Спираль + приоритет руин (детерминированный выбор по `lastActivityAt → unitIds.count → projectId`); атомарный state-переход; визуальная анимация расчистки 3–5 сек (TASK-017). Cross-project overlap защита (TASK-056 BUG-022): `allocateNextOrigin(otherProjectsClaims:minDistrictRadius:)` пропускает origin'ы в Чебышёвской окрестности чужих claim'ов; `UnitPlanner.nextPosition(otherProjectCells:)` + `footprintBlocked` hard-block чужие клетки. Computed claim-map собирается на лету через `CityEngine.claimedCellsByProjects(in:includeDecayedRuins:)` без миграции CityState формата. Property-инвариант: для любых двух юнитов A, B → `A.position != B.position` ИЛИ `A.projectId == B.projectId`. **Ruin reoccupation (TASK-058 BUG-024):** на cross-project-skip call site передаётся `includeDecayedRuins: false` — клетки decay-4 проектов (reusable почва) исключаются из карты, новый проект может встать рядом с руинами или поверх; in-district placement сохраняет hard-block decay-4 footprint'а до ruin-ветки. |
 | F-07 | Состав и баланс юнитов в квартале             | ✅     | `Game/UnitPlanner.swift` (categoryPattern + pickKind), `Data/CityState.swift` (UnitCategory + UnitKind.category) | Категориальная таблица 10R/4I/4P/2S = 50/20/20/10%, rotation по per-category счётчикам, stage-ограничения (market≥2, temple/obelisk≥4), well-правило 1:5. TASK-018 ✅ |
 | F-08 | Стадии развития квартала (0 → 5)              | ✅     | `Game/StageRules.swift` (формула), `Game/UnitSprites.swift` (makeCategoricalBuilding + 4×5 factory), `Game/CityEngine.swift` (onProjectStageChanged), `Game/GameScene.swift` (handleProjectStageChanged + swapStageSprite) | Формула stage 0→5 + категориальный tier-набор 20 спрайтов (4 категории × 5 stage), cross-fade ≤0.5 сек параллельно, bottom-anchor сохраняется. TASK-019 ✅ |
 | F-09 | Decay и руины                                 | ✅     | `Game/DecayEngine.swift`, `Game/DecayVisuals.swift`, `Game/CityEngine.swift`, `Game/GameScene.swift` | DecayEngine (DispatchSourceTimer 1h), уровни 0-4, системные события decay_tick/fire/restore, визуал overlay + руины |

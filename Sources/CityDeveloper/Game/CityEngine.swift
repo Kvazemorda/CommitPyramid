@@ -323,7 +323,10 @@ final class CityEngine: ObservableObject {
                 // (включаем все, кроме текущего projectKey) и передаём в planner —
                 // он будет пропускать origin'ы в Чебышёвской окрестности < 8 клеток
                 // от любой чужой клетки.
-                let allClaims = Self.claimedCellsByProjects(in: state)
+                // BUG-024: decay-4 руины — reusable почва (либо уже выбраны pickRuinForNewProject
+                // выше, либо должны пройти через свежий fallback). Не блокируем origin-спираль
+                // клетками руин — новый проект должен иметь возможность встать рядом с ними.
+                let allClaims = Self.claimedCellsByProjects(in: state, includeDecayedRuins: false)
                 let otherClaims = allClaims
                     .filter { $0.key != projectKey }
                     .values
@@ -995,11 +998,24 @@ extension CityEngine {
     /// Возвращает [projectId: Set<GridPoint>] для использования в
     /// DistrictPlanner.allocateNextOrigin и UnitPlanner.nextPosition.
     /// O(N) по числу юнитов; вызывается раз на applyTaskCompleted.
+    ///
+    /// TASK-058 BUG-024: при `includeDecayedRuins=false` decay-4 проекты исключаются —
+    /// клетки считаются reusable почвой (не блокируют cross-project origin skip).
+    /// Orphan units (без соответствующего ProjectState) при `includeDecayedRuins=false`
+    /// также пропускаются — не должны влиять на cross-project skip.
     static func claimedCellsByProjects(
-        in state: CityState
+        in state: CityState,
+        includeDecayedRuins: Bool = true
     ) -> [String: Set<GridPoint>] {
         var result: [String: Set<GridPoint>] = [:]
         for unit in state.units.values {
+            // TASK-058 BUG-024: при includeDecayedRuins=false пропускаем decay-4 проекты.
+            // Orphan unit (нет ProjectState) при includeDecayedRuins=false — тоже пропускаем:
+            // orphan не должен влиять на cross-project skip.
+            if !includeDecayedRuins {
+                guard let proj = state.projects[unit.projectId] else { continue }
+                if proj.decayLevel >= 4 { continue }
+            }
             let size = unit.kind.size
             var cells = result[unit.projectId, default: []]
             for dx in 0..<size.width {
