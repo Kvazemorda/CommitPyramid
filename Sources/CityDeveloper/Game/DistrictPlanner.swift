@@ -112,8 +112,14 @@ struct DistrictPlanner {
             // возвращаем уже найденный water+cross-skipped origin.
         }
 
-        // Если все 10 000 клеток оказались водой/занятыми — возвращаем последнюю
-        // найденную позицию без дополнительного инкремента (edge case backstop).
+        // Если все 10 000 клеток оказались водой/занятыми — логируем warning и возвращаем
+        // последнюю найденную позицию без дополнительного инкремента (edge case backstop).
+        if idx >= maxAttempts {
+            ErrorsLog.write(
+                "DistrictPlanner.allocateNextOrigin: no land cell within spiral radius after " +
+                "\(idx - currentIndex) attempts; returning defensive fallback at \(origin)"
+            )
+        }
         return (origin, idx)
     }
 
@@ -192,6 +198,11 @@ struct DistrictPlanner {
             }
             return (origin, idx)
         }
+        // maxAttempts exhausted — логируем warning (defensive fallback на центр магистрали).
+        ErrorsLog.write(
+            "DistrictPlanner.allocateAlongMagistrale: maxAttempts \(maxAttempts - currentIndex) " +
+            "exhausted; returning defensive fallback at mag[\(centerIdx)]=\(mag[centerIdx])"
+        )
         return (mag[centerIdx], idx)
     }
 }

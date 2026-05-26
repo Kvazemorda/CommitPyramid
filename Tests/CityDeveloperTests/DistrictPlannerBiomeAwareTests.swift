@@ -28,6 +28,37 @@ final class DistrictPlannerBiomeAwareTests: XCTestCase {
         }
     }
 
+    // MARK: - Test seam setup / teardown
+
+    /// Captured log messages written via ErrorsLog.writer during a test.
+    private var capturedLogs: [String] = []
+
+    override func setUp() {
+        super.setUp()
+        capturedLogs = []
+        // Redirect ErrorsLog.write to a synchronous capture closure.
+        // allocateNextOrigin / allocateAlongMagistrale are synchronous,
+        // so the writer is called synchronously before return — no extra sync needed.
+        ErrorsLog.writer = { [weak self] message in
+            self?.capturedLogs.append(message)
+        }
+    }
+
+    override func tearDown() {
+        ErrorsLog.resetWriter()
+        capturedLogs = []
+        super.tearDown()
+    }
+
+    // MARK: - Helper
+
+    /// Runs `block`, captures all messages written via ErrorsLog.writer, returns them.
+    private func captureErrorsLog(_ block: () -> Void) -> [String] {
+        capturedLogs = []
+        block()
+        return capturedLogs
+    }
+
     // MARK: - testBiomeAwareSpiralFindsPreferredBiomeOrigin
 
     /// Карта почти вся meadow, но один mountain-тайл в зоне первых 20 кандидатов спирали.
@@ -47,16 +78,20 @@ final class DistrictPlannerBiomeAwareTests: XCTestCase {
 
         let reader = MockBiomeReader(biomes: [mountainPoint: .mountain], defaultBiome: .meadow)
 
-        let (origin, _) = planner.allocateNextOrigin(
-            currentIndex: 0,
-            biomeReader: reader,
-            preferredBiomes: [.mountain]
-        )
+        let captured = captureErrorsLog {
+            let (origin, _) = planner.allocateNextOrigin(
+                currentIndex: 0,
+                biomeReader: reader,
+                preferredBiomes: [.mountain]
+            )
+            XCTAssertEqual(origin, mountainPoint,
+                "Планировщик должен выбрать .mountain тайл на \(mountainPoint), а не spiral-центр. Got: \(origin)")
+            XCTAssertEqual(reader.biome(atX: origin.x, y: origin.y), .mountain,
+                "Выбранная клетка должна иметь биом .mountain. Got: \(reader.biome(atX: origin.x, y: origin.y))")
+        }
 
-        XCTAssertEqual(origin, mountainPoint,
-            "Планировщик должен выбрать .mountain тайл на \(mountainPoint), а не spiral-центр. Got: \(origin)")
-        XCTAssertEqual(reader.biome(atX: origin.x, y: origin.y), .mountain,
-            "Выбранная клетка должна иметь биом .mountain. Got: \(reader.biome(atX: origin.x, y: origin.y))")
+        XCTAssertTrue(captured.isEmpty,
+            "Meadow-карта с достижимым mountain не должна генерировать warning. Got: \(captured)")
     }
 
     // MARK: - testFallbackToSpiralWhenNoMatchingBiome
@@ -68,15 +103,20 @@ final class DistrictPlannerBiomeAwareTests: XCTestCase {
         let planner = DistrictPlanner()
         let reader = MockBiomeReader(biomes: [:], defaultBiome: .meadow)
 
-        let (origin, _) = planner.allocateNextOrigin(
-            currentIndex: 0,
-            biomeReader: reader,
-            preferredBiomes: [.river]
-        )
+        let captured = captureErrorsLog {
+            let (origin, _) = planner.allocateNextOrigin(
+                currentIndex: 0,
+                biomeReader: reader,
+                preferredBiomes: [.river]
+            )
 
-        let expectedOrigin = planner.spiralPoint(index: 0)
-        XCTAssertEqual(origin, expectedOrigin,
-            "При отсутствии .river тайлов fallback должен вернуть spiralPoint(0). Got: \(origin)")
+            let expectedOrigin = planner.spiralPoint(index: 0)
+            XCTAssertEqual(origin, expectedOrigin,
+                "При отсутствии .river тайлов fallback должен вернуть spiralPoint(0). Got: \(origin)")
+        }
+
+        XCTAssertTrue(captured.isEmpty,
+            "Meadow-карта не должна генерировать warning. Got: \(captured)")
     }
 
     // MARK: - testIsDeterministicForSameInputs
@@ -163,5 +203,93 @@ final class DistrictPlannerBiomeAwareTests: XCTestCase {
         let biome = reader.biome(atX: origin.x, y: origin.y)
         XCTAssertFalse(biome.isWater,
             "Возвращённый origin не должен быть водным тайлом. Got biome: \(biome), origin: \(origin)")
+    }
+
+    // MARK: - AC3: test_AllWaterMapTriggersErrorsLogWarning
+
+    /// Property-тест: 100% водная карта (defaultBiome = .sea) → allocateNextOrigin
+    /// исчерпывает 10 000 попыток и пишет warning в ErrorsLog.
+    /// AC3: seam захватывает сообщение, содержащее "allocateNextOrigin" и "defensive fallback".
+    func test_AllWaterMapTriggersErrorsLogWarning() {
+        let planner = DistrictPlanner()
+        // Все клетки = .sea — нет ни одной land-клетки.
+        let reader = MockBiomeReader(biomes: [:], defaultBiome: .sea)
+
+        let captured = captureErrorsLog {
+            let (origin, idx) = planner.allocateNextOrigin(
+                currentIndex: 0,
+                biomeReader: reader,
+                preferredBiomes: []
+            )
+            // После исчерпания idx должен достигнуть maxAttempts = 10_000.
+            XCTAssertEqual(idx, 10_000,
+                "При 100% водной карте idx должен достигнуть maxAttempts=10000. Got: \(idx)")
+            // origin — последняя клетка спирали (defensive fallback, может быть водной).
+            _ = origin // используем, чтобы подавить warning компилятора
+        }
+
+        XCTAssertFalse(captured.isEmpty,
+            "100% водная карта должна сгенерировать ErrorsLog warning, но captured пуст.")
+        let hasWarning = captured.contains { msg in
+            msg.contains("allocateNextOrigin") && msg.contains("defensive fallback")
+        }
+        XCTAssertTrue(hasWarning,
+            "Warning должен содержать 'allocateNextOrigin' и 'defensive fallback'. Got: \(captured)")
+    }
+
+    // MARK: - AC3: test_AllWaterMagistraleTriggersErrorsLogWarning
+
+    /// Property-тест: магистраль из одной клетки, всё вокруг = .sea.
+    /// allocateAlongMagistrale исчерпывает 1 000 попыток и пишет warning.
+    func test_AllWaterMagistraleTriggersErrorsLogWarning() {
+        let planner = DistrictPlanner()
+        // Все клетки = .sea, включая окрестности магистрали.
+        let reader = MockBiomeReader(biomes: [:], defaultBiome: .sea)
+        // Магистраль: одна клетка в центре карты.
+        let mainRoadCells = [GridPoint(x: 128, y: 128)]
+
+        let captured = captureErrorsLog {
+            let (origin, idx) = planner.allocateAlongMagistrale(
+                currentIndex: 0,
+                mainRoadCells: mainRoadCells,
+                biomeReader: reader,
+                otherProjectsClaims: [],
+                minDistrictRadius: 8
+            )
+            // После исчерпания idx должен достигнуть maxAttempts = 1_000.
+            XCTAssertEqual(idx, 1_000,
+                "При 100% водной карте idx должен достигнуть maxAttempts=1000. Got: \(idx)")
+            // origin — mag[centerIdx] = mag[0] = GridPoint(128, 128) (defensive fallback).
+            XCTAssertEqual(origin, mainRoadCells[0],
+                "Defensive fallback должен вернуть mag[centerIdx]. Got: \(origin)")
+        }
+
+        XCTAssertFalse(captured.isEmpty,
+            "100% водная карта должна сгенерировать ErrorsLog warning (magistrale), но captured пуст.")
+        let hasWarning = captured.contains { msg in
+            msg.contains("allocateAlongMagistrale") && msg.contains("defensive fallback")
+        }
+        XCTAssertTrue(hasWarning,
+            "Warning должен содержать 'allocateAlongMagistrale' и 'defensive fallback'. Got: \(captured)")
+    }
+
+    // MARK: - AC4 negative: test_MeadowMapDoesNotTriggerWarning
+
+    /// Negative-тест (AC4 регресс): полностью meadow-карта → warning НЕ появляется.
+    /// Подтверждает, что seam не захватывает посторонние записи при нормальной работе.
+    func test_MeadowMapDoesNotTriggerWarning() {
+        let planner = DistrictPlanner()
+        let reader = MockBiomeReader(biomes: [:], defaultBiome: .meadow)
+
+        let captured = captureErrorsLog {
+            _ = planner.allocateNextOrigin(
+                currentIndex: 0,
+                biomeReader: reader,
+                preferredBiomes: []
+            )
+        }
+
+        XCTAssertTrue(captured.isEmpty,
+            "Meadow-карта не должна генерировать warning. Got: \(captured)")
     }
 }

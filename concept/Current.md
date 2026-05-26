@@ -1,6 +1,38 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-003/007/024/025 закрыты)_
+_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-003/007/009/024/025 закрыты)_
+
+## ⏱ Что сделано за прогон 2026-05-26 (TASK-062 — BUG-009 defensive warning при исчерпании спирали)
+
+**Закрыто:**
+- TASK-062 (BUG-009, P1) — водный hard-skip в DistrictPlanner **уже работал**
+  с TASK-030c (water-skip) + TASK-056 (cross-project skip). Не было только
+  defensive warning при исчерпании спирали — пользователь/разработчик не знал
+  что произошёл fallback на water-cell. Добавлено:
+  - `ErrorsLog`: test seam — `private static let defaultWriter`,
+    `static var writer = defaultWriter`, `static func resetWriter()`.
+    Production behavior идентичен (writer = defaultWriter); тесты подменяют
+    writer в setUp / restore в tearDown.
+  - `DistrictPlanner.allocateNextOrigin:117`: `if idx >= maxAttempts` →
+    `ErrorsLog.write("...allocateNextOrigin: no land cell within spiral
+    radius after N attempts; returning defensive fallback at <origin>")`.
+  - `DistrictPlanner.allocateAlongMagistrale:202`: unconditional warning
+    после while-loop (единственный путь выхода без early return — exhaustion).
+  - `DistrictPlannerBiomeAwareTests`: 3 новых теста + setUp/tearDown +
+    `captureErrorsLog` helper.
+  - Lead-model: opus (P1, узкий S delta); Run: sonnet executor +
+    sonnet verify + opus code-review (approved).
+
+**Результат `swift test`:** 179/179 — 9/9 BiomeAware (6 старых + 3 новых),
+2/2 NoOverlapProperty regress.
+
+**Изменения файлов за TASK-062:**
+- `Sources/CityDeveloper/Data/ErrorsLog.swift` (test seam + fix unused try?)
+- `Sources/CityDeveloper/Game/DistrictPlanner.swift` (2 warning'а)
+- `Tests/CityDeveloperTests/DistrictPlannerBiomeAwareTests.swift` (+3 теста)
+- `concept/Bugs.md` (BUG-009 → Закрытые с примечанием про TASK-030c/056)
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-26 (TASK-060 — BUG-003+007 Settings scrollable layout)
 

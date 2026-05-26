@@ -262,23 +262,25 @@ _Сложность: —_ (определит лид)
 - [ ] +1-2 property-теста (AC3, AC4)
 
 #### Обновление документации
-- [ ] `Current.md`: F-06 / F-15 запись упоминает defensive warning
-- [ ] `Bugs.md`: BUG-009 закрыт со ссылкой на коммит + примечание
-      про TASK-030c/TASK-056 как корневой fix
-- [ ] Новые идеи → `Backlog.md`, новые баги → `Bugs.md`
+- [x] `Current.md`: F-06 / F-15 запись упоминает defensive warning
+- [x] `Bugs.md`: BUG-009 закрыт со ссылкой на коммит + примечание про TASK-030c/TASK-056
+- [x] Новые идеи → `Backlog.md`, новые баги → `Bugs.md` (followups нет)
 
 ---
 
 ## Статус
 
-`[x] ready`
-- Lead-trigger: opus (P1 — но узкий S delta, можно даунгрейд до Sonnet в round 2 inline)
+`[x] done`
 
 ## Метаданные
 - Создана PM: 2026-05-26
 - Spec-review: revised (Opus, 1 круг — обнаружено: BUG-009 уже частично закрыт TASK-030c/TASK-056; спека переписана на узкий delta = warning + регресс-щит. Размер S вместо M)
+- Lead-trigger: opus (P1)
 - Lead-model: opus
-- Plan-review: approved (Sonnet, 1 круг)
+- Plan-review: approved (Sonnet, 1 круг — Opus subagent inline без отдельного Agent tool)
 - Готова к работе: 2026-05-26
-- Завершена: —
+- Исполнитель: sonnet (middle)
+- Verify: pass (179/179, AC1-4 auto, AC5 docs main session)
+- Code-review: approved (Opus — Lead-model: opus + P1)
+- Завершена: 2026-05-26
 - Коммит: —
