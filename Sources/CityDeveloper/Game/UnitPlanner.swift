@@ -339,13 +339,10 @@ struct UnitPlanner {
 
         let i = max(0, buildingIndex)
 
-        // Fallback: legacy-кольцо вокруг origin (если карты дорог нет).
-        // TASK-056: legacyRingPosition не учитывает otherProjectCells (детерминированная
-        // формула без поиска). Используется только при roadCells.isEmpty (самый ранний
-        // юнит проекта в pre-mainRoad сценарии) — в этой ситуации otherProjectCells
-        // также пуст (никакой другой проект ещё не разместил юнит без дорог).
+        // Fallback на легаси-кольцо (TASK-059 учитывает builtCells + otherProjectCells).
         if roadCells.isEmpty {
-            return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
+            return legacyRingPosition(origin: origin, i: i, unitSize: unitSize,
+                                      builtCells: builtCells, otherProjectCells: otherProjectCells)
         }
 
         // Только дороги «своего» квартала: внутри окна ±halfSide от origin.
@@ -360,7 +357,8 @@ struct UnitPlanner {
         }
 
         if nearby.isEmpty {
-            return legacyRingPosition(origin: origin, i: i, unitSize: unitSize)
+            return legacyRingPosition(origin: origin, i: i, unitSize: unitSize,
+                                      builtCells: builtCells, otherProjectCells: otherProjectCells)
         }
 
         // BUG-017/018: ТОЛЬКО depth=1 от anchor — гарантирует, что front-edge
@@ -474,15 +472,40 @@ struct UnitPlanner {
     }
 
     /// Legacy-кольцо вокруг origin (только при пустой roadCells).
-    /// Ограничено radius=3 (max 24 здания через ring).
-    private func legacyRingPosition(origin: GridPoint, i: Int, unitSize: GridSize) -> GridPoint {
-        let ring = min(i / 8 + 1, 3)
-        let slot = i % 8
+    /// Ограничено radius=3 (max 24 позиции через ring × 8 направлений).
+    /// TASK-059 BUG-025: проверяет builtCells + otherProjectCells через footprintBlocked;
+    /// возвращает первую незаблокированную позицию. Если все 24 блокированы —
+    /// логирует предупреждение в ErrorsLog и возвращает i-ю позицию по формуле (defensive, no crash).
+    private func legacyRingPosition(
+        origin: GridPoint, i: Int, unitSize: GridSize,
+        builtCells: Set<GridPoint> = [],
+        otherProjectCells: Set<GridPoint> = []
+    ) -> GridPoint {
         let offsets: [(Int, Int)] = [
             (1, 0), (1, 1), (0, 1), (-1, 1),
             (-1, 0), (-1, -1), (0, -1), (1, -1),
         ]
+        // Проходим все 24 позиции начиная с i-й (детерминированный порядок).
+        for j in 0..<24 {
+            let idx = i + j
+            let ring = min(idx / 8 + 1, 3)
+            let slot = idx % 8
+            let (dx, dy) = offsets[slot]
+            let pos = GridPoint(x: origin.x + dx * ring, y: origin.y + dy * ring)
+            if !footprintBlocked(at: pos, size: unitSize, roads: [],
+                                 built: builtCells, otherProjectCells: otherProjectCells) {
+                return pos
+            }
+        }
+        // Все 24 позиции заблокированы — defensive return без crash.
+        ErrorsLog.write(
+            "UnitPlanner.legacyRingPosition: all 24 ring positions blocked " +
+            "at origin=\(origin), i=\(i)"
+        )
+        let ring = min(i / 8 + 1, 3)
+        let slot = i % 8
         let (dx, dy) = offsets[slot]
         return GridPoint(x: origin.x + dx * ring, y: origin.y + dy * ring)
     }
+
 }

@@ -1,6 +1,43 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-024 закрыт TASK-058, BUG-025 в работе TASK-059)_
+_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-024 закрыт TASK-058, BUG-025 закрыт TASK-059)_
+
+## ⏱ Что сделано за прогон 2026-05-26 (TASK-059 — BUG-025 legacyRingPosition overlap guard)
+
+**Закрыто:**
+- TASK-059 (BUG-025, P2) — `UnitPlanner.legacyRingPosition` не проверял
+  `otherProjectCells` в pre-mainRoad сценарии (первый юнит проекта до
+  появления road) → возможна была постановка поверх клеток чужого проекта.
+  Edge case не покрытый cross-project overlap фиксом TASK-056.
+  - `UnitPlanner.legacyRingPosition` расширен опциональными параметрами
+    `builtCells: Set<GridPoint> = []`, `otherProjectCells: Set<GridPoint> = []`
+    (back-compat default). Внутри — цикл `for j in 0..<24` с проверкой через
+    `footprintBlocked(...)`: возвращает первую незаблокированную позицию в
+    детерминированном порядке. Если все 24 idx блокированы — `ErrorsLog.write`
+    + defensive return i-й позиции по исходной формуле (без crash).
+  - Прокинуты параметры в оба call site `nextPosition` (`roadCells.isEmpty`
+    и `nearby.isEmpty`).
+  - Property-тесты `UnitPlannerLegacyRingOverlapTests` × 2: NoOverlap (5
+    проектов × 1 task без mainRoad, CityEngine-level через `roadNetwork=nil`)
+    + DeterministicReplay.
+  - Lead-model: sonnet (P2 + 2 файла → не Opus-триггер); Plan-review: opus
+    approved (1 круг). Run: sonnet executor + sonnet verify + sonnet
+    code-review (approved, без блокеров).
+
+**Результат `swift test`:** 176/176 — все тесты suite зелёные.
+
+**Изменения файлов за TASK-059:**
+- `Sources/CityDeveloper/Game/UnitPlanner.swift` (расширена сигнатура
+  `legacyRingPosition` + skip-логика + оба call site + комментарий)
+- `Tests/CityDeveloperTests/UnitPlannerLegacyRingOverlapTests.swift` (НОВЫЙ, 2 теста)
+- `concept/Bugs.md` (BUG-025 → Закрытые)
+
+**Followup:** doc-комментарий «max 24 позиции» технически неточный — реально
+16 уникальных (3 кольца × 8 слотов; `ring = min(idx/8+1, 3)` зажимается на 3
+при `idx ≥ 16`). Defensive путь работает корректно, только комментарий
+нуждается в уточнении при следующем касании UnitPlanner.
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-26 (TASK-058 — BUG-024 ruin reoccupation)
 
