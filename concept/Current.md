@@ -1,6 +1,34 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-024 закрыт TASK-058, BUG-025 закрыт TASK-059)_
+_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-003/007/024/025 закрыты)_
+
+## ⏱ Что сделано за прогон 2026-05-26 (TASK-060 — BUG-003+007 Settings scrollable layout)
+
+**Закрыто:**
+- TASK-060 (BUG-003 + BUG-007, P1) — Settings окно: добавлен `.resizable`
+  в styleMask, content size 720×600 → 800×720, minSize 640×480 → 720×500.
+  Outer `ScrollView(.vertical)` уже существовал на SettingsView:47 — один
+  фикс window-level закрывает оба бага. После TASK-060:
+  - На пустом списке источников видны все кнопки секций.
+  - При добавлении 5+ репо outer ScrollView активируется, нижние секции
+    остаются доступны.
+  - Пользователь может ресайзить окно (drag нижнего угла).
+  - На дисплее 1280×720 AppKit автоматически обрезает по экрану,
+    `.resizable` + outer ScrollView обрабатывают overflow.
+  - JournalWindowController уже использовал тот же паттерн
+    `[.titled, .closable, .resizable]` — consistency сохранена.
+  - Lead-model: opus (P1); Run: haiku executor (junior/S, 4 точечные
+    правки в 2 файлах: SettingsWindowController.swift строки 30-32,
+    SettingsView.swift строка 146); Code-review: opus (approved).
+
+**Результат `swift test`:** 176/176 — тесты не затронуты (UI-only правки).
+
+**Изменения файлов за TASK-060:**
+- `Sources/CityDeveloper/App/SettingsWindowController.swift` (styleMask + content + minSize)
+- `Sources/CityDeveloper/UI/SettingsView.swift` (`.frame(minWidth: 720, minHeight: 500)`)
+- `concept/Bugs.md` (BUG-003 + BUG-007 → Закрытые)
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-26 (TASK-059 — BUG-025 legacyRingPosition overlap guard)
 
@@ -505,7 +533,7 @@ TASK-050 (era progression), TASK-051 (Settings UI).
 | F-11 | Инспектор / журнал событий                    | ✅     | `Game/GameScene.swift`, `UI/SidePanelView.swift`, `UI/ProjectCard.swift`, `UI/SceneBridge.swift`, `UI/InspectorOverlayCard.swift`, `UI/JournalKindFilter.swift`, `App/JournalWindowController.swift` | SwiftUI overlay-карточка (trailing center) ✅ — единственный канал отображения через `bridge?.selectedUnitInfo` (legacy SpriteKit `InspectorPanel` удалён в TASK-055/BUG-001); журнал в отдельном floating-окне через кнопку `list.bullet` ✅; население per-project (TASK-014) ✅; запись `unit_built`/`stage_up` в `events.jsonl` (TASK-024) ✅; фильтр по типу события с Menu-пресетами + popover «Кастом» (TASK-015) ✅ |
 | F-12 | Снэпшоты состояния                            | ✅     | `Data/StateSnapshot.swift`, `Data/SnapshotStore.swift`, `Game/CityEngine.swift` | Snapshot+tail replay, trigger 500 events/24h/quit, atomic write, fallback на full replay |
 | F-13 | Каталог арт-ассетов                           | ✅     | `Game/IsoBuilder.swift`, `Game/UnitSprites.swift`, `Game/CitizenSprites.swift`, `Game/RoadConnector.swift` | 12 типов + жители + руины + штабели + road-варианты. Particle-эффекты — F-05/F-09. |
-| F-14 | Настройки (UI)                                | ✅     | `Data/AppSettings.swift`, `UI/SettingsView.swift`, `App/SettingsWindowController.swift` | Путь tasks.jsonl + dataDir + hotkey, применяются без рестарта, persistence UserDefaults |
+| F-14 | Настройки (UI)                                | ✅     | `Data/AppSettings.swift`, `UI/SettingsView.swift`, `App/SettingsWindowController.swift` | Путь tasks.jsonl + dataDir + hotkey, применяются без рестарта, persistence UserDefaults. **TASK-060 (BUG-003+007):** styleMask `[.titled, .closable, .resizable]`, content 800×720, minSize 720×500; outer `ScrollView(.vertical)` на SettingsView:47 обрабатывает overflow при добавлении N репо/notes-источников. |
 | F-15 | Биомы и генерация карты                       | ✅     | `World/NoiseMap.swift`, `World/NoiseFieldGenerator.swift`, `World/WorldMapProvider.swift`, `World/WorldMapStore.swift`, `World/WorldSeedStore.swift`, `World/BiomeKind.swift`, `World/BiomeClassifier.swift`, `Game/BiomeMapReader.swift`, `Game/TileTextureFactory.swift`, `Game/BiomeRenderer.swift`, `Game/GameScene.swift`, `Game/MapReinitCoordinator.swift`, `Game/DistrictPlanner.swift`, `Game/TerrainAffinity.swift`, `Game/CityEngine.swift`, `UI/SettingsView.swift`, `Data/AppSettings.swift` | Шумовые поля 256×256 (TASK-026 ✅). BiomeClassifier: квантильные пороги, flood-fill sea, downhill rivers (TASK-027 ✅). Рендер биомов на SKTileMapNode + 64 переходных тайла + overlay-градиенты (TASK-028 ✅). Зум до ×0.15 + clamp по границам карты (TASK-029 ✅). Реинициализация карты: Settings UI «Карта мира» с seed input + confirm (TASK-030a ✅), MapReinitCoordinator atomic pause→bak→regenerate→replay→resume (TASK-030b ✅), biome-aware district allocation — `TerrainAffinity.preferredBiomes(for:)` helper + `DistrictPlanner.allocateNextOrigin(preferredBiomes:)` filter с fallback на спираль (TASK-030c ✅). **Балансировка распределения (TASK-057 ✅, 2026-05-25):** `BiomeClassifier.maxDominantShare = 0.55` (доминанта ≤ 55%), `minDiversity = 4` (≥4 неводных биомов из {meadow, desert, forest, mountain, stone} с долей ≥ 5% каждый); `BiomeClassifier.classify(world:strict:)` возвращает `ClassificationOutcome` (distribution / dominantShare / nonWaterAboveThreshold / seaPresent / balanced); `WorldMapProvider.generateWithRetry` пробует до 5 seed'ов (`requested, requested+1, …, requested+4`) при bad-seed, фактически использованный seed сохраняется в `worldmap.json` + `WorldSeedStore` (семантика поля `seed` теперь = «фактически использованный после retry»); UI в Settings показывает «Seed: requested N → actual M» при несовпадении (`AppSettings.requestedMapSeed` эфемерное). Property-тест `BiomeDistributionPropertyTests`: 10/10 захардкоженных seeds после retry проходят инвариант. Закрывает BUG-008 + косвенно BUG-006. **Followup:** в текущей точке вызова в `isNewProject` ветке `unitIds=[]` → preferred=[] (origin фиксируется до накопления юнитов); реальный PM-сценарий «рыболовный квартал у реки» требует replay-aware integration — отдельная задача. |
 | F-16 | Расширенный каталог юнитов (50 шт.)           | ✅     | `Data/CityState.swift`, `Data/SnapshotStore.swift`, `Data/GameEvent.swift`, `Game/UnitSprites.swift`, `Game/UnitPlanner.swift`, `Game/CityEngine.swift`, `Game/GameScene.swift`, `Game/DeterministicRNG.swift`, `Game/TerrainAffinity.swift`, `Tests/CityDeveloperTests/UnitPlannerTests.swift`, `concept/UnitCatalog.md`, `docs/asset-prompts.md` | Каталог 51 UnitKind (TASK-031). Placeholder PNG-first (TASK-032). Эволюционные цепочки + replay-safe (TASK-034). Terrain affinity pure helper (TASK-033). UnitPlanner biome-aware 5-step (TASK-035). Stage-tier visual API (TASK-036). Legacy 12→50 migration (TASK-037). UnitPlannerTests 9 кейсов (TASK-038). Документация UnitCatalog.md (TASK-039). **TASK-040** закрыт через `docs/asset-prompts.md` (67KB каталог промптов для AI-генерации спрайтов; контрибьюторы добавляют через PR — продакшн-арт не делается самим). Reconciliation 2026-05-25: ⚠️→✅ (sync-state отставал, по факту закрыто 2026-05-23 вместе с F-21 docs/). |
 | F-17 | In-app journal (ручной ввод)                  | ✅     | `UI/SidePanelView.swift`, `UI/TaskInputPopupView.swift`, `UI/SceneBridge.swift`, `Game/GameScene.swift`, `UI/ContentView.swift` | Блок ввода задачи в верхней части SidePanelView (TextField + Picker с «Создать новый…» + Cmd+Return); контекстный popup по клику пустой части квартала (diamond hit-test, decay-4 guard); запись через `engine.ingestTaskCompletion(source: "journal")`; валидация (whitespace guard + warning border 1.5 сек, 255 символов); idempotent replay через events.jsonl. TASK-021 ✅ |
