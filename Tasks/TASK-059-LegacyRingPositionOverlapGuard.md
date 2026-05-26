@@ -275,4 +275,4 @@ _Сложность: S_ (как оценил лид)
 - Verify: pass (176/176, AC1-5 auto, AC6 defensive в коде)
 - Code-review: approved (sonnet, без блокеров)
 - Завершена: 2026-05-26
-- Коммит: —
+- Коммит: ed924c3

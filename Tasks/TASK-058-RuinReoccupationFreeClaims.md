@@ -254,4 +254,4 @@ _Сложность: S (выполнено за 1 сессию)_
 - Verify: pass (206/206 tests, AC1-3,5,6 auto, AC4 minor gap по тесту 2+ кандидатов)
 - Code-review: approved (opus — Lead-model: opus + P1)
 - Завершена: 2026-05-26
-- Коммит: —
+- Коммит: 96cfd12
