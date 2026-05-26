@@ -337,4 +337,4 @@ _Сложность: —_ (определит лид)
 - Verify: pass (182/182, AC1-AC7 auto, AC8 manual GUI)
 - Code-review: approved (Opus — Lead-model: opus + P1; 3 non-blocking → followups в Backlog)
 - Завершена: 2026-05-26
-- Коммит: —
+- Коммит: 396cbd9

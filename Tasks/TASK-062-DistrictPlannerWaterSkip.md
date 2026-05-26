@@ -283,4 +283,4 @@ _Сложность: —_ (определит лид)
 - Verify: pass (179/179, AC1-4 auto, AC5 docs main session)
 - Code-review: approved (Opus — Lead-model: opus + P1)
 - Завершена: 2026-05-26
-- Коммит: —
+- Коммит: ee46658

@@ -228,4 +228,4 @@ _Сложность: —_ (определит лид)
 - Verify: pass (176/176, AC1-5 manual GUI required, AC6 auto)
 - Code-review: approved (Opus — Lead-model: opus + P1; JournalWindowController использует тот же паттерн `.resizable`)
 - Завершена: 2026-05-26
-- Коммит: —
+- Коммит: 065f9a8
