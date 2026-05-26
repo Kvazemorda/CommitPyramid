@@ -82,6 +82,17 @@ final class CityEngine: ObservableObject {
         guard let rn = roadNetwork else { return }
         for project in state.projects.values {
             if rn.plannedCells(for: project.id).isEmpty {
+                // TASK-063 AC7 replay: воссоздаём branch ПЕРЕД planDistrict (silent, no callback).
+                // claims=[] корректно: idempotentность через allCells Set — повторные вызовы
+                // не добавляют дубликаты. Legacy проекты только (templateName == nil).
+                if project.templateName == nil {
+                    rn.extendBranchToOrigin(
+                        projectId: project.id,
+                        origin: project.districtOrigin,
+                        otherProjectsClaims: [],
+                        biomeReader: biomeReader
+                    )
+                }
                 rn.planDistrict(projectId: project.id, origin: project.districtOrigin)
                 // Считаем сколько road-юнитов проект уже построил (от старой логики или текущей).
                 let roadCount = project.unitIds.compactMap { state.units[$0.uuidString] }
@@ -390,6 +401,27 @@ final class CityEngine: ObservableObject {
             // в road-слоты template. Fallback (template exhausted) использует
             // legacy nextPosition с магистралью в roadCells / legacyRingPosition.
             if project.templateName == nil {
+                // TASK-063 AC2/AC3: branching — добавить road-ответвление от магистрали
+                // к off-road origin'у ПЕРЕД planDistrict, чтобы branch-клетки оказались
+                // в allCells до формирования петли (дубли безопасны через allCells.contains
+                // guard в planDistrict:127-129).
+                // Templated проекты — пропускаем (followup в backlog).
+                if let rn = roadNetwork {
+                    let allClaims = Self.claimedCellsByProjects(in: state, includeDecayedRuins: false)
+                    let otherClaimsForBranch = allClaims
+                        .filter { $0.key != projectKey }
+                        .values
+                        .reduce(into: Set<GridPoint>()) { $0.formUnion($1) }
+                    let branchCells = rn.extendBranchToOrigin(
+                        projectId: projectKey,
+                        origin: origin,
+                        otherProjectsClaims: otherClaimsForBranch,
+                        biomeReader: biomeReader
+                    )
+                    if !silent && !branchCells.isEmpty {
+                        onRoadCellsAdded?(branchCells)
+                    }
+                }
                 roadNetwork?.planDistrict(projectId: projectKey, origin: origin)
             }
         }

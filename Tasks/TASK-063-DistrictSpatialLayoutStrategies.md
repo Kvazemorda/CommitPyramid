@@ -317,22 +317,24 @@ _Сложность: —_ (определит лид)
 - [ ] `Bugs.md`: BUG-026 закрыт со ссылкой на коммит (с пометкой
       «частично — только branching стратегия; spiral/grid/template/templates
       в backlog»)
-- [ ] `Backlog.md`: добавить followups — (1) Spatial-layout стратегии
-      Settings переключатель; (2) district-placement templates по family;
-      (3) мосты через воду для branching offset.
-- [ ] Новые идеи → `Backlog.md`, новые баги → `Bugs.md`
+- [x] `Backlog.md`: followups добавлены — (1) Spatial-layout стратегии Settings переключатель; (2) district-placement templates по family; (3) мосты через воду; (4) bounds-upper-check для branching (layer 16+); (5) dedicated hard-block negative test; (6) biomeReader-presence invariant test для syncRoadNetworkPlans replay.
+- [x] Новые идеи → `Backlog.md`, новые баги → `Bugs.md`
 
 ---
 
 ## Статус
 
-`[x] ready` — план готов, ожидает исполнителя.
-- Lead-trigger: opus (P1 + multi-module: DistrictPlanner + RoadNetwork + property-tests; новый branching algorithm)
+`[x] done`
 
 ## Метаданные
 - Создана PM: 2026-05-26
-- Spec-review: approved (Opus, 1 круг — N-порог и имя метода extendBranchToOrigin делегированы лиду как design choices, не PM-дыры)
-- Lead-разбор: 2026-05-26 (Opus, self plan-review fallback — Agent-tool недоступен)
+- Spec-review: approved (Opus, 1 круг)
+- Lead-trigger: opus (P1 + multi-module)
+- Lead-model: opus
+- Plan-review: self plan-review (Agent-tool недоступен в subagent среде; чеклист пройден дисциплинарно)
 - Готова к работе: 2026-05-26
-- Завершена: —
+- Исполнитель: sonnet (middle)
+- Verify: pass (182/182, AC1-AC7 auto, AC8 manual GUI)
+- Code-review: approved (Opus — Lead-model: opus + P1; 3 non-blocking → followups в Backlog)
+- Завершена: 2026-05-26
 - Коммит: —

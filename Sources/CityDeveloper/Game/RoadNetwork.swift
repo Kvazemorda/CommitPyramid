@@ -245,6 +245,74 @@ final class RoadNetwork {
         districtLoopSides.removeAll()
     }
 
+    // MARK: - Branch road от магистрали до off-road origin'а
+
+    /// Строит road-ответвление от ближайшей клетки магистрали до origin'а off-road квартала.
+    ///
+    /// Контракт:
+    ///   - `m = nearestMainRoadPoint(to: origin)` — якорная клетка на магистрали.
+    ///   - Если `|origin.y - m.y| <= loopDepth` — петля сама смыкается с mag, branch не нужен → [].
+    ///   - Иначе строит candidate-клетки `(m.x, m.y + vSide * v)` для `v = 1..perpOffset-1`,
+    ///     где `perpOffset = |origin.y - m.y|`, `vSide = sign(origin.y - m.y)`.
+    ///     Ответвление покрывает полный зазор от mag до ближней к origin стороне —
+    ///     гарантирует непрерывный road-path от origin до магистрали (AC5).
+    ///   - Hard-block: любая candidate в `otherProjectsClaims` или `.sea/.river`
+    ///     (через biomeReader) → [] (caller должен bump-нуть idx и пробовать следующий origin).
+    ///   - Иначе добавляет клетки в `allCells` и возвращает их для `onRoadCellsAdded`.
+    ///   - Дубли с будущей петлёй безопасны: `planDistrict` guard allCells.contains.
+    ///   - Идемпотентен через `allCells` Set (повторный вызов = no-op для уже добавленных).
+    ///
+    /// - Parameters:
+    ///   - projectId: ID проекта (для логирования).
+    ///   - origin: origin нового квартала.
+    ///   - otherProjectsClaims: footprint-клетки других проектов (hard-block).
+    ///   - biomeReader: для проверки water-block (nil → только otherProjectsClaims).
+    /// - Returns: массив добавленных branch-клеток (без mag-клетки `m`), или [] если branch не нужен/невозможен.
+    @discardableResult
+    func extendBranchToOrigin(
+        projectId: String,
+        origin: GridPoint,
+        otherProjectsClaims: Set<GridPoint>,
+        biomeReader: BiomeMapReader?
+    ) -> [GridPoint] {
+        guard let m = nearestMainRoadPoint(to: origin) else { return [] }
+
+        let dy = origin.y - m.y
+        let loopDepth = Self.loopDepth
+
+        // Если origin достаточно близко к mag — петля сама дотянется, branch не нужен.
+        if abs(dy) <= loopDepth { return [] }
+
+        let vSide = dy > 0 ? 1 : -1
+        let perpOffset = abs(dy)   // расстояние от mag до origin
+
+        // Покрываем полный зазор v = 1..perpOffset-1 (до ближней клетки перед origin).
+        // Это гарантирует road-path от origin до mag (AC5).
+        var candidates: [GridPoint] = []
+        for v in 1..<perpOffset {
+            candidates.append(GridPoint(x: m.x, y: m.y + vSide * v))
+        }
+
+        // Hard-block: любая candidate в воде или в чужом footprint → вернуть [] без side-effects.
+        for c in candidates {
+            if let reader = biomeReader, reader.biome(atX: c.x, y: c.y).isWater {
+                return []
+            }
+            if otherProjectsClaims.contains(c) {
+                return []
+            }
+        }
+
+        // Добавляем только новые клетки (Set — idempotent).
+        var added: [GridPoint] = []
+        for c in candidates {
+            if allCells.insert(c).inserted {
+                added.append(c)
+            }
+        }
+        return added
+    }
+
     // MARK: - Private
 
     /// Генерирует петлю-прямоугольник, выровненный с горизонтальной магистралью (gy=midY).

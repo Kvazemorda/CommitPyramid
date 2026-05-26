@@ -1,6 +1,49 @@
 # CityDeveloper — Текущее состояние репозитория
 
-_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-003/007/009/024/025 закрыты)_
+_Актуально на: 2026-05-26 (sync — все 25 фич ✅, BUG-003/007/009/024/025/026 закрыты; BUG-026 partial — MVP branching, остальные стратегии в backlog)_
+
+## ⏱ Что сделано за прогон 2026-05-26 (TASK-063 — BUG-026 branching стратегия + road branches)
+
+**Закрыто (partial — branching MVP):**
+- TASK-063 (BUG-026 partial, P1) — город перестал расти линией. Добавлена
+  branching стратегия в `DistrictPlanner.allocateAlongMagistrale`:
+  - `branchingThreshold = 3` — первые 3 origin'а вдоль магистрали
+    (текущее поведение); с 4-го (`idx >= 3`) — branching формула
+    `layer = i/4 + 1, sub = i%4, perpOffset = minDistrictRadius * layer`
+    (origin отходит перпендикулярно с шагом 8 поочерёдно вверх/вниз).
+  - Новый `RoadNetwork.extendBranchToOrigin(origin:claims:reader:)` —
+    строит road-сегмент `v=1..perpOffset-1` от ближайшей mag-клетки до
+    периметра нового квартала. Hard-block water + cross-project через
+    2-pass проверку (atomic insert или return [] без partial).
+  - `CityEngine.applyTaskCompleted` legacy-ветка вызывает
+    `extendBranchToOrigin` перед `planDistrict`. `syncRoadNetworkPlans`
+    patch для replay-determinism (AC7).
+  - Property-тесты `DistrictBranchingPropertyTests` × 3 (perpendicular
+    offset, road branch path до магистрали через BFS, deterministic
+    replay).
+  - Lead-model: opus (P1 + multi-module); Run: sonnet executor + sonnet
+    verify + opus code-review (approved, 3 non-blocking → followups).
+
+**Followups в Backlog (что осталось от BUG-026):**
+- Settings UI переключатель стратегий (spiral/grid/template/auto).
+- District-placement templates по family (roman-grid / greek-hippodamian /
+  egyptian-spiral).
+- Мосты через воду.
+- Code-review non-blocking: bounds upper-check, dedicated negative-test,
+  biomeReader-presence invariant.
+
+**Результат `swift test`:** 182/182 — 3/3 DistrictBranching, 9/9
+BiomeAware regress, 2/2 NoOverlap regress, 2/2 LegacyRing regress.
+
+**Изменения файлов за TASK-063:**
+- `Sources/CityDeveloper/Game/DistrictPlanner.swift` (branchingThreshold + ветка)
+- `Sources/CityDeveloper/Game/RoadNetwork.swift` (extendBranchToOrigin)
+- `Sources/CityDeveloper/Game/CityEngine.swift` (wiring + syncRoadNetworkPlans patch)
+- `Tests/CityDeveloperTests/DistrictBranchingPropertyTests.swift` (НОВЫЙ, 3 теста)
+- `concept/Bugs.md` (BUG-026 partial → Закрытые)
+- `concept/Backlog.md` (4 новых followup-идеи)
+
+---
 
 ## ⏱ Что сделано за прогон 2026-05-26 (TASK-062 — BUG-009 defensive warning при исчерпании спирали)
 
@@ -557,7 +600,7 @@ TASK-050 (era progression), TASK-051 (Settings UI).
 | F-03 | Event sourcing (лог + replay)                 | ✅     | `Data/EventLog.swift`, `Data/GameEvent.swift`, `Game/CityEngine.swift` | Подтверждено smoke-тестом                  |
 | F-04 | Watcher `tasks.jsonl` (legacy / частный случай F-18) | ✅     | `Data/TasksJsonlWatcher.swift`, `Data/IngestionState.swift`, `Data/TaskRecord.swift` | DispatchSource, валидация, offset. После F-18 — частный случай (один файл с фиксированным форматом) |
 | F-05 | Лёгкая симуляция жизни квартала               | ✅     | `Game/LifeSimulationManager.swift`, `Game/GameScene.swift` | 11 типов юнитов (кроме road) + smoke/sparks/flags/ripple/silhouettes + pause при behind |
-| F-06 | Project-District и автоматическое размещение  | ✅     | `Game/DistrictPlanner.swift`, `Game/UnitPlanner.swift`, `Game/CityEngine.swift` (`pickRuinForNewProject`, `claimedCellsByProjects`), `Game/GameScene.swift` (`handleRuinsCleared`) | Спираль + приоритет руин (детерминированный выбор по `lastActivityAt → unitIds.count → projectId`); атомарный state-переход; визуальная анимация расчистки 3–5 сек (TASK-017). Cross-project overlap защита (TASK-056 BUG-022): `allocateNextOrigin(otherProjectsClaims:minDistrictRadius:)` пропускает origin'ы в Чебышёвской окрестности чужих claim'ов; `UnitPlanner.nextPosition(otherProjectCells:)` + `footprintBlocked` hard-block чужие клетки. Computed claim-map собирается на лету через `CityEngine.claimedCellsByProjects(in:includeDecayedRuins:)` без миграции CityState формата. Property-инвариант: для любых двух юнитов A, B → `A.position != B.position` ИЛИ `A.projectId == B.projectId`. **Ruin reoccupation (TASK-058 BUG-024):** на cross-project-skip call site передаётся `includeDecayedRuins: false` — клетки decay-4 проектов (reusable почва) исключаются из карты, новый проект может встать рядом с руинами или поверх; in-district placement сохраняет hard-block decay-4 footprint'а до ruin-ветки. |
+| F-06 | Project-District и автоматическое размещение  | ✅     | `Game/DistrictPlanner.swift`, `Game/UnitPlanner.swift`, `Game/CityEngine.swift` (`pickRuinForNewProject`, `claimedCellsByProjects`), `Game/GameScene.swift` (`handleRuinsCleared`) | Спираль + приоритет руин (детерминированный выбор по `lastActivityAt → unitIds.count → projectId`); атомарный state-переход; визуальная анимация расчистки 3–5 сек (TASK-017). Cross-project overlap защита (TASK-056 BUG-022): `allocateNextOrigin(otherProjectsClaims:minDistrictRadius:)` пропускает origin'ы в Чебышёвской окрестности чужих claim'ов; `UnitPlanner.nextPosition(otherProjectCells:)` + `footprintBlocked` hard-block чужие клетки. Computed claim-map собирается на лету через `CityEngine.claimedCellsByProjects(in:includeDecayedRuins:)` без миграции CityState формата. Property-инвариант: для любых двух юнитов A, B → `A.position != B.position` ИЛИ `A.projectId == B.projectId`. **Ruin reoccupation (TASK-058 BUG-024):** на cross-project-skip call site передаётся `includeDecayedRuins: false` — клетки decay-4 проектов (reusable почва) исключаются из карты, новый проект может встать рядом с руинами или поверх; in-district placement сохраняет hard-block decay-4 footprint'а до ruin-ветки. **Branching layout (TASK-063 BUG-026 partial):** `DistrictPlanner.branchingThreshold=3` — первые 3 origin'а вдоль магистрали, с 4-го branching формула (origin отходит перпендикулярно от магистрали с шагом `minDistrictRadius*layer`). Новый `RoadNetwork.extendBranchToOrigin` строит road-сегмент от ближайшей mag-клетки до периметра нового квартала с water + cross-project hard-block (atomic 2-pass). `syncRoadNetworkPlans` patch для replay-determinism. Город визуально перестал быть линией; полный набор стратегий (spiral/grid/template) — в backlog. |
 | F-07 | Состав и баланс юнитов в квартале             | ✅     | `Game/UnitPlanner.swift` (categoryPattern + pickKind), `Data/CityState.swift` (UnitCategory + UnitKind.category) | Категориальная таблица 10R/4I/4P/2S = 50/20/20/10%, rotation по per-category счётчикам, stage-ограничения (market≥2, temple/obelisk≥4), well-правило 1:5. TASK-018 ✅ |
 | F-08 | Стадии развития квартала (0 → 5)              | ✅     | `Game/StageRules.swift` (формула), `Game/UnitSprites.swift` (makeCategoricalBuilding + 4×5 factory), `Game/CityEngine.swift` (onProjectStageChanged), `Game/GameScene.swift` (handleProjectStageChanged + swapStageSprite) | Формула stage 0→5 + категориальный tier-набор 20 спрайтов (4 категории × 5 stage), cross-fade ≤0.5 сек параллельно, bottom-anchor сохраняется. TASK-019 ✅ |
 | F-09 | Decay и руины                                 | ✅     | `Game/DecayEngine.swift`, `Game/DecayVisuals.swift`, `Game/CityEngine.swift`, `Game/GameScene.swift` | DecayEngine (DispatchSourceTimer 1h), уровни 0-4, системные события decay_tick/fire/restore, визуал overlay + руины |

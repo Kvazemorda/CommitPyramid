@@ -125,8 +125,23 @@ struct DistrictPlanner {
 
     // MARK: - Allocation along magistrale
 
-    /// Кладёт origin В ЦЕНТРЕ карты, вдоль магистрали: первые 2 квартала по обе стороны от
-    /// центра mag, далее «слоями» по uSide=±1 (forward/backward вдоль mag), vSide=±1 (R/L от mag).
+    /// Порог: первые N кварталов идут вдоль магистрали (старая логика),
+    /// с (N+1)-го — branching-ответвления от магистрали под прямым углом.
+    static let branchingThreshold = 3
+
+    /// Кладёт origin В ЦЕНТРЕ карты, вдоль магистрали: первые N (branchingThreshold) кварталов
+    /// идут вдоль mag (старая ветка); начиная с индекса branchingThreshold — branching-ветка:
+    /// origin уходит перпендикулярно от магистрали на perpOffset=minDistrictRadius клеток.
+    ///
+    /// Branching формула (MAG-HORIZONTAL ASSUMPTION: mag по gy=midY):
+    ///   i = idx - branchingThreshold
+    ///   layer = i / 4 + 1                      // 1,1,1,1, 2,2,2,2 ...
+    ///   sub = i % 4
+    ///   uSide = (sub / 2 == 0) ? +1 : -1       // forward/backward по mag.x
+    ///   vSide = (sub % 2 == 0) ? +1 : -1       // выше/ниже mag.y
+    ///   magIdx = centerIdx + uSide * layer * stepAlongMag
+    ///   perpOffset = minDistrictRadius * layer  // 8, 16, 24 …
+    ///   origin = (m.x, m.y + vSide * perpOffset)
     ///
     /// - Parameters:
     ///   - currentIndex: счётчик кварталов из CityState.
@@ -152,36 +167,63 @@ struct DistrictPlanner {
         let mag = mainRoadCells
         let centerIdx    = mag.count / 2
         let stepAlongMag = 8       // > 2*halfW для непересечения соседних петель
-        let offsetPerp   = 3       // origin отстоит на 3 клетки от mag по перпендикуляру (v=3 внутри loop)
+        let offsetPerp   = 3       // along-mag ветка: origin на 3 клетки от mag (v=3 внутри loop)
 
         let maxAttempts = currentIndex + 1_000
         var idx = currentIndex
         while idx < maxAttempts {
-            let layer: Int
-            let uSide: Int   // +1 forward вдоль mag (+gx), -1 backward (-gx)
-            let vSide: Int   // +1 ABOVE mag (+gy → к LEFT/TOP по экрану), -1 BELOW (-gy → к BOTTOM/RIGHT)
-            if idx == 0 {
-                layer = 0; uSide = 0; vSide = 1
-            } else if idx == 1 {
-                layer = 0; uSide = 0; vSide = -1
+            let origin: GridPoint
+
+            if idx < Self.branchingThreshold {
+                // --- Старая ветка: вдоль магистрали ---
+                let layer: Int
+                let uSide: Int   // +1 forward вдоль mag (+gx), -1 backward (-gx)
+                let vSide: Int   // +1 ABOVE mag (+gy), -1 BELOW (-gy)
+                if idx == 0 {
+                    layer = 0; uSide = 0; vSide = 1
+                } else if idx == 1 {
+                    layer = 0; uSide = 0; vSide = -1
+                } else {
+                    let i = idx - 2
+                    layer = i / 4 + 1
+                    let sub = i % 4
+                    uSide = (sub / 2 == 0) ? 1 : -1
+                    vSide = (sub % 2 == 0) ? 1 : -1
+                }
+                let magIdx = centerIdx + uSide * layer * stepAlongMag
+                guard magIdx >= 0, magIdx < mag.count else {
+                    idx += 1
+                    continue
+                }
+                let m = mag[magIdx]
+                // MAG-HORIZONTAL ASSUMPTION: mag по gy=midY, перпендикуляр — ось ±gy.
+                origin = GridPoint(x: m.x, y: m.y + vSide * offsetPerp)
             } else {
-                let i = idx - 2
-                layer = i / 4 + 1
-                let sub = i % 4
-                uSide = (sub / 2 == 0) ? 1 : -1
-                vSide = (sub % 2 == 0) ? 1 : -1
+                // --- Branching ветка: перпендикулярно от магистрали ---
+                let i = idx - Self.branchingThreshold
+                let layer = i / 4 + 1
+                let sub   = i % 4
+                let uSide = (sub / 2 == 0) ? 1 : -1
+                let vSide = (sub % 2 == 0) ? 1 : -1
+                let magIdx = centerIdx + uSide * layer * stepAlongMag
+                guard magIdx >= 0, magIdx < mag.count else {
+                    idx += 1
+                    continue
+                }
+                let m = mag[magIdx]
+                let perpOffset = minDistrictRadius * layer   // 8, 16, 24 …
+                // MAG-HORIZONTAL ASSUMPTION: перпендикуляр — ось ±gy.
+                let candidateY = m.y + vSide * perpOffset
+                // Граница карты: проверяем что origin не выходит за пределы.
+                // Для branching нет rows-параметра, поэтому используем простое bounds-check
+                // через biomeReader (если nil — разрешаем). Настоящий bound-check —
+                // через water-skip ниже (sea = граница карты).
+                guard candidateY >= 0 else {
+                    idx += 1
+                    continue
+                }
+                origin = GridPoint(x: m.x, y: candidateY)
             }
-            let magIdx = centerIdx + uSide * layer * stepAlongMag
-            guard magIdx >= 0, magIdx < mag.count else {
-                idx += 1
-                continue
-            }
-            let m = mag[magIdx]
-            // Магистраль горизонтальна (gy=midY), перпендикуляр в гриде — ось ±gy.
-            let origin = GridPoint(
-                x: m.x,
-                y: m.y + vSide * offsetPerp
-            )
 
             if let reader = biomeReader, reader.biome(atX: origin.x, y: origin.y).isWater {
                 idx += 1
